@@ -9,6 +9,7 @@ A small set of standalone, interactive artifacts on AI agents. Live site (GitHub
 | [`harness-llm-animation.html`](harness-llm-animation.html) | *Agent = LLM + Harness* — step-through token-flow animation (bare LLM vs. agent loop). |
 | [`harness-rnd-directions.html`](harness-rnd-directions.html) | The eight Harness R&D directions, each expandable to its key papers. |
 | [`07-sota-open-problems.html`](07-sota-open-problems.html) | Interactive concept map of open problems in LLM-agent architectures (toggleable axes). Loads D3 from a CDN. |
+| [`10-harness-llm-rnd-mindmap.html`](10-harness-llm-rnd-mindmap.html) | Interactive R&D tree: Harness · LLM · Glue · IETF, with top papers + recent findings per field. Loads D3 from a CDN. |
 | [`ietf-agentic-inventory.pdf`](ietf-agentic-inventory.pdf) | Inventory of IETF work on agentic AI (A2A communication, discovery, identity/audit, content-use preferences, IoT/edge). |
 
 All HTML files are self-contained — open them directly in a modern browser, or browse them on the live

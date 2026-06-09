@@ -1,0 +1,754 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>AI Agent R&D — Harness · LLM · Glue · IETF — Interactive Mindmap</title>
+<style>
+  :root {
+    --bg: #0f1115; --panel: #171a21; --ink: #e8eaed; --muted: #9aa3af;
+    --line: #2a2f3a; --accent: #6ea8fe; --why: #d8c79c; --whyline: #b08d3a;
+    --recent: #9dd1b0; --recentline: #2f7d52;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink);
+    font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+  #app { display: grid; grid-template-columns: 1fr 400px; height: 100vh; }
+  #stage { position: relative; overflow: hidden; }
+  svg { width: 100%; height: 100%; display: block; cursor: grab; }
+  svg:active { cursor: grabbing; }
+  .link { fill: none; stroke: var(--line); stroke-width: 1.5px; }
+  .node circle { stroke-width: 2px; cursor: pointer; }
+  .node text { fill: var(--ink); cursor: pointer; paint-order: stroke;
+    stroke: var(--bg); stroke-width: 3px; font-size: 13px; }
+  .node.dim { opacity: 0.18; }
+  .node.match text { fill: #ffe082; font-weight: 700; }
+  .node.selected circle { stroke: #ffe082 !important; }
+  .node.selected text { fill: #ffe082; font-weight: 700; }
+  .node.hasinfo text { text-decoration: underline dotted #ffd54f; text-underline-offset: 3px; }
+
+  #panel { background: var(--panel); border-left: 1px solid var(--line); padding: 22px 20px; overflow-y: auto; }
+  #panel h1 { font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 0 0 4px; font-weight: 600; }
+  #crumb { color: var(--muted); font-size: 12px; margin-bottom: 14px; min-height: 16px; }
+  #term { font-size: 22px; font-weight: 700; margin: 0 0 10px; line-height: 1.25; }
+  #def { font-size: 15px; color: var(--ink); }
+  #def.empty { color: var(--muted); font-style: italic; }
+  #why, #refs, #impl, #recent { margin-top: 16px; }
+  #why[hidden], #refs[hidden], #impl[hidden], #recent[hidden] { display: none; }
+  #why h2, #refs h2, #impl h2, #recent h2 { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 0 0 6px; }
+  #why p { margin: 0; font-size: 14px; color: #e7dcc2; background: #221f17; border-left: 3px solid var(--whyline); padding: 9px 11px; border-radius: 4px; }
+  .ref { margin-bottom: 9px; font-size: 12.5px; line-height: 1.35; }
+  .ref a { color: #9ec1ff; text-decoration: none; }
+  .ref a:hover { text-decoration: underline; }
+  .ref .venue { display: block; color: var(--muted); font-size: 11px; }
+  .ref .find { display: block; color: var(--recent); font-size: 12px; margin-top: 2px; }
+  #recent .ref { border-left: 3px solid var(--recentline); padding-left: 9px; background: #16201a; border-radius: 4px; padding: 7px 9px; }
+  #kids { margin-top: 18px; }
+  #kids h2 { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 0 0 8px; }
+  #kids button { display: block; width: 100%; text-align: left; background: transparent; color: var(--ink);
+    border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; margin-bottom: 6px; cursor: pointer; font-size: 13px; }
+  #kids button:hover { border-color: var(--accent); }
+  #kids button.present-btn { background: var(--accent); color: #0b0e13; border-color: var(--accent); font-weight: 700; margin-bottom: 12px; }
+  #kids button.present-btn:hover { filter: brightness(1.08); }
+  .swatch { display: inline-block; width: 14px; height: 14px; border-radius: 3px; margin-right: 10px; vertical-align: middle; }
+
+  #bar { position: absolute; top: 12px; left: 12px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; z-index: 5; }
+  #bar input[type="search"], #bar button { background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; font-size: 13px; }
+  #bar input[type="search"] { width: 170px; }
+  #bar button { cursor: pointer; }
+  #bar button:hover { border-color: var(--accent); }
+  .tog { display: flex; align-items: center; gap: 5px; color: var(--ink); font-size: 13px; user-select: none; cursor: pointer;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; }
+  .tog input { cursor: pointer; margin: 0; }
+  #hint { position: absolute; bottom: 10px; left: 12px; color: var(--muted); font-size: 12px; z-index: 5; }
+  @media (max-width: 820px) { #app { grid-template-columns: 1fr; grid-template-rows: 1fr 42vh; } #panel { border-left: none; border-top: 1px solid var(--line); } }
+
+  #slide { position: fixed; inset: 0; background: rgba(10,12,16,0.98); z-index: 50; overflow: auto; padding: 56px 48px 48px; }
+  #slide[hidden] { display: none; }
+  #slideInner { max-width: 1140px; margin: 0 auto; }
+  #slideCrumb { color: var(--muted); font-size: 13px; letter-spacing: .04em; margin-bottom: 10px; }
+  #slideTitle { font-size: 34px; margin: 0 0 12px; }
+  #slideDef { font-size: 17px; color: #cdd3db; max-width: 820px; margin: 0 0 14px; }
+  #slideWhy { max-width: 820px; color: var(--why); border-left: 3px solid var(--whyline); padding: 9px 13px; margin: 0 0 16px; font-size: 15px; background: #221f17; border-radius: 4px; }
+  #slideSources { color: var(--muted); font-size: 13px; margin: 0 0 16px; }
+  #slideSources a { color: #9ec1ff; text-decoration: none; }
+  #slideSources a:hover { text-decoration: underline; }
+  #slideWhy:empty, #slideSources:empty, #slideRecent:empty { display: none; }
+  #slideRecent { max-width: 900px; margin: 0 0 22px; }
+  #slideRecent h4 { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 0 0 8px; }
+  #slideRecent .ref { border-left: 3px solid var(--recentline); padding: 6px 10px; background: #16201a; border-radius: 4px; }
+  #slideGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 16px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-top: 3px solid var(--accent); border-radius: 12px; padding: 16px 18px; }
+  .card.hasKids { cursor: pointer; }
+  .card.hasKids:hover { border-color: var(--accent); }
+  .card h3 { margin: 0 0 6px; font-size: 17px; }
+  .card p { margin: 0; color: #cbd2da; font-size: 14px; }
+  .card .why { margin: 10px 0 0; font-size: 13px; color: var(--why); border-left: 2px solid var(--whyline); padding-left: 9px; }
+  .card .sources { margin-top: 10px; font-size: 12px; color: var(--muted); }
+  .card .sources a { color: #9ec1ff; text-decoration: none; }
+  .card .sources a:hover { text-decoration: underline; }
+  .card ul.sub { margin: 12px 0 0; padding-left: 18px; color: #aeb6c0; font-size: 13px; }
+  .card ul.sub li { margin-bottom: 5px; }
+  .card ul.sub b { color: var(--ink); }
+  #slideNav { position: fixed; top: 16px; right: 24px; display: flex; gap: 8px; align-items: center; z-index: 51; }
+  #slideNav button { background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; cursor: pointer; font-size: 13px; }
+  #slideNav button:hover { border-color: var(--accent); }
+  #slidePos { color: var(--muted); font-size: 13px; min-width: 54px; text-align: center; }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip { display: inline-block; background: #1b2330; border: 1px solid var(--line); border-radius: 999px; padding: 3px 9px; font-size: 12px; color: #cdd6e2; white-space: nowrap; text-decoration: none; }
+  a.chip:hover { border-color: var(--accent); color: #fff; }
+  .card .impl { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 5px; }
+  #slideImpl { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 22px; }
+  #slideImpl:empty { display: none; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="stage">
+    <div id="bar">
+      <input id="search" type="search" placeholder="Search…" />
+      <button id="expand">Expand all</button>
+      <button id="collapse">Collapse</button>
+      <button id="reset">Reset</button>
+      <label class="tog"><input type="checkbox" id="togWhy" /> Why</label>
+      <label class="tog"><input type="checkbox" id="togRefs" /> Top papers</label>
+      <label class="tog"><input type="checkbox" id="togRecent" /> Recent findings</label>
+      <label class="tog"><input type="checkbox" id="togImpl" /> Landscape</label>
+    </div>
+    <svg></svg>
+    <div id="hint">↑↓ move · → expand · ← collapse · Enter present · click to pin · toggles: Why / Top papers / Recent findings / Landscape</div>
+  </div>
+  <div id="panel">
+    <h1>AI Agent R&amp;D</h1>
+    <div id="crumb"></div>
+    <div id="term">AI Agent = Harness + LLM</div>
+    <div id="def" class="empty">Click or use arrow keys on any node. Toggle <b>Top papers</b> (3 seminal) and <b>Recent findings</b> (recent papers + latest result) above.</div>
+    <div id="why" hidden></div>
+    <div id="refs" hidden></div>
+    <div id="recent" hidden></div>
+    <div id="impl" hidden></div>
+    <div id="kids"></div>
+  </div>
+</div>
+
+<div id="slide" hidden>
+  <div id="slideNav">
+    <button id="prevSib">‹ Prev</button>
+    <span id="slidePos"></span>
+    <button id="nextSib">Next ›</button>
+    <button id="upSlide">↑ Up</button>
+    <button id="closeSlide">Close ✕</button>
+  </div>
+  <div id="slideInner">
+    <div id="slideCrumb"></div>
+    <h2 id="slideTitle"></h2>
+    <p id="slideDef"></p>
+    <div id="slideWhy"></div>
+    <div id="slideSources"></div>
+    <div id="slideImpl"></div>
+    <div id="slideRecent"></div>
+    <div id="slideGrid"></div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+<script>
+/* ===========================================================================
+   Bibliography — keyed by id. Nodes cite via cite:[ids] (Top papers axis) and
+   recent:[[id,"finding"]] (Recent findings axis). arXiv ids web-verified 2026-06.
+   IETF entries point to the datatracker; drafts are work-in-progress — re-pull.
+   =========================================================================== */
+const REFS = {
+  // --- LLM core / foundations ---
+  transformer:{ short:"Transformer (Vaswani 2017)", authors:"Vaswani et al.", year:2017, title:"Attention Is All You Need", venue:"NeurIPS 2017", url:"https://arxiv.org/abs/1706.03762" },
+  gpt3:       { short:"GPT-3 (Brown 2020)", authors:"Brown et al.", year:2020, title:"Language Models are Few-Shot Learners", venue:"NeurIPS 2020", url:"https://arxiv.org/abs/2005.14165" },
+  instructgpt:{ short:"InstructGPT (Ouyang 2022)", authors:"Ouyang et al.", year:2022, title:"Training Language Models to Follow Instructions with Human Feedback", venue:"NeurIPS 2022", url:"https://arxiv.org/abs/2203.02155" },
+  chinchilla: { short:"Chinchilla (Hoffmann 2022)", authors:"Hoffmann et al.", year:2022, title:"Training Compute-Optimal Large Language Models", venue:"NeurIPS 2022", url:"https://arxiv.org/abs/2203.15556" },
+  llama2:     { short:"Llama 2 (Touvron 2023)", authors:"Touvron et al.", year:2023, title:"Llama 2: Open Foundation and Fine-Tuned Chat Models", venue:"arXiv:2307.09288", url:"https://arxiv.org/abs/2307.09288" },
+  dpo:        { short:"DPO (Rafailov 2023)", authors:"Rafailov et al.", year:2023, title:"Direct Preference Optimization: Your Language Model is Secretly a Reward Model", venue:"NeurIPS 2023", url:"https://arxiv.org/abs/2305.18290" },
+  cai:        { short:"Constitutional AI (Bai 2022)", authors:"Bai et al.", year:2022, title:"Constitutional AI: Harmlessness from AI Feedback", venue:"arXiv:2212.08073", url:"https://arxiv.org/abs/2212.08073" },
+  // --- reasoning ---
+  cot:        { short:"Chain-of-Thought (Wei 2022)", authors:"Wei et al.", year:2022, title:"Chain-of-Thought Prompting Elicits Reasoning in Large Language Models", venue:"NeurIPS 2022", url:"https://arxiv.org/abs/2201.11903" },
+  deepseekr1: { short:"DeepSeek-R1 (2025)", authors:"DeepSeek-AI", year:2025, title:"DeepSeek-R1: Incentivizing Reasoning Capability in LLMs via Reinforcement Learning", venue:"arXiv:2501.12948", url:"https://arxiv.org/abs/2501.12948" },
+  latentreason:{ short:"Latent reasoning (Geiping 2025)", authors:"Geiping et al.", year:2025, title:"Scaling up Test-Time Compute with Latent Reasoning: A Recurrent Depth Approach", venue:"arXiv:2502.05171", url:"https://arxiv.org/abs/2502.05171" },
+  // --- long context ---
+  posinterp:  { short:"Position Interpolation (Chen 2023)", authors:"Chen et al.", year:2023, title:"Extending Context Window of LLMs via Positional Interpolation", venue:"arXiv:2306.15595", url:"https://arxiv.org/abs/2306.15595" },
+  yarn:       { short:"YaRN (Peng 2023)", authors:"Peng et al.", year:2023, title:"YaRN: Efficient Context Window Extension of Large Language Models", venue:"ICLR 2024", url:"https://arxiv.org/abs/2309.00071" },
+  longrope:   { short:"LongRoPE (Ding 2024)", authors:"Ding et al.", year:2024, title:"LongRoPE: Extending LLM Context Window Beyond 2 Million Tokens", venue:"ICML 2024", url:"https://arxiv.org/abs/2402.13753" },
+  lostmiddle: { short:"Lost in the Middle (Liu 2023)", authors:"Liu et al.", year:2023, title:"Lost in the Middle: How Language Models Use Long Contexts", venue:"TACL 2024", url:"https://arxiv.org/abs/2307.03172" },
+  lcserve:    { short:"Long-context serving CAP (2024)", authors:"Yuan et al.", year:2024, title:"The CAP Principle for LLM Serving: A Survey of Long-Context LLM Serving", venue:"arXiv:2405.11299", url:"https://arxiv.org/abs/2405.11299" },
+  // --- efficiency / architecture / serving ---
+  deepseekv3: { short:"DeepSeek-V3 (2024)", authors:"DeepSeek-AI", year:2024, title:"DeepSeek-V3 Technical Report (671B MoE, MLA, aux-loss-free balancing)", venue:"arXiv:2412.19437", url:"https://arxiv.org/abs/2412.19437" },
+  medusa:     { short:"Medusa (Cai 2024)", authors:"Cai et al.", year:2024, title:"Medusa: Simple LLM Inference Acceleration with Multiple Decoding Heads", venue:"ICML 2024", url:"https://arxiv.org/abs/2401.10774" },
+  distill:    { short:"Distillation (Hinton 2015)", authors:"Hinton et al.", year:2015, title:"Distilling the Knowledge in a Neural Network", venue:"NeurIPS DL Workshop 2015", url:"https://arxiv.org/abs/1503.02531" },
+  efficientllm:{ short:"Efficient LLMs survey (2023)", authors:"Wan et al.", year:2023, title:"Efficient Large Language Models: A Survey", venue:"arXiv:2312.03863", url:"https://arxiv.org/abs/2312.03863" },
+  // --- determinism / serving ---
+  batchinvariant:{ short:"Defeating Nondeterminism (Thinking Machines 2025)", authors:"Thinking Machines Lab", year:2025, title:"Defeating Nondeterminism in LLM Inference (batch-invariant kernels)", venue:"thinkingmachines.ai", url:"https://thinkingmachines.ai/blog/defeating-nondeterminism-in-llm-inference/" },
+  numnondeterminism:{ short:"Numerical nondeterminism (2025)", authors:"He et al.", year:2025, title:"Understanding and Mitigating Numerical Sources of Nondeterminism in LLM Inference", venue:"arXiv:2506.09501", url:"https://arxiv.org/abs/2506.09501" },
+  llm42:      { short:"LLM-42 (2026)", authors:"(2026)", year:2026, title:"LLM-42: Enabling Determinism in LLM Inference with Verified Speculation", venue:"arXiv:2601.17768", url:"https://arxiv.org/abs/2601.17768" },
+  // --- context / RAG ---
+  rag:        { short:"RAG (Lewis 2020)", authors:"Lewis et al.", year:2020, title:"Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks", venue:"NeurIPS 2020", url:"https://arxiv.org/abs/2005.11401" },
+  selfrag:    { short:"Self-RAG (Asai 2023)", authors:"Asai et al.", year:2023, title:"Self-RAG: Learning to Retrieve, Generate, and Critique through Self-Reflection", venue:"ICLR 2024", url:"https://arxiv.org/abs/2310.11511" },
+  graphrag:   { short:"GraphRAG (Edge 2024)", authors:"Edge et al.", year:2024, title:"From Local to Global: A Graph RAG Approach to Query-Focused Summarization", venue:"arXiv:2404.16130", url:"https://arxiv.org/abs/2404.16130" },
+  // --- memory ---
+  memgpt:     { short:"MemGPT (Packer 2023)", authors:"Packer et al.", year:2023, title:"MemGPT: Towards LLMs as Operating Systems", venue:"arXiv:2310.08560", url:"https://arxiv.org/abs/2310.08560" },
+  genagents:  { short:"Generative Agents (Park 2023)", authors:"Park et al.", year:2023, title:"Generative Agents: Interactive Simulacra of Human Behavior", venue:"UIST 2023", url:"https://arxiv.org/abs/2304.03442" },
+  memorybank: { short:"MemoryBank (Zhong 2023)", authors:"Zhong et al.", year:2023, title:"MemoryBank: Enhancing Large Language Models with Long-Term Memory", venue:"arXiv:2305.10250", url:"https://arxiv.org/abs/2305.10250" },
+  mem0:       { short:"Mem0 (2025)", authors:"Chhikara et al.", year:2025, title:"Mem0: Building Production-Ready AI Agents with Scalable Long-Term Memory", venue:"arXiv:2504.19413", url:"https://arxiv.org/abs/2504.19413" },
+  // --- planning / control ---
+  react:      { short:"ReAct (Yao 2022)", authors:"Yao et al.", year:2022, title:"ReAct: Synergizing Reasoning and Acting in Language Models", venue:"ICLR 2023", url:"https://arxiv.org/abs/2210.03629" },
+  tot:        { short:"Tree of Thoughts (Yao 2023)", authors:"Yao et al.", year:2023, title:"Tree of Thoughts: Deliberate Problem Solving with Large Language Models", venue:"NeurIPS 2023", url:"https://arxiv.org/abs/2305.10601" },
+  lats:       { short:"LATS (Zhou 2023)", authors:"Zhou et al.", year:2023, title:"Language Agent Tree Search Unifies Reasoning, Acting, and Planning", venue:"ICML 2024", url:"https://arxiv.org/abs/2310.04406" },
+  // --- constrained generation ---
+  gcd:        { short:"Grammar-Constrained Decoding (Geng 2023)", authors:"Geng et al.", year:2023, title:"Grammar-Constrained Decoding for Structured NLP Tasks without Finetuning", venue:"EMNLP 2023", url:"https://arxiv.org/abs/2305.13971" },
+  outlines:   { short:"Guided Generation / Outlines (Willard 2023)", authors:"Willard & Louf", year:2023, title:"Efficient Guided Generation for Large Language Models", venue:"arXiv:2307.09702", url:"https://arxiv.org/abs/2307.09702" },
+  picard:     { short:"PICARD (Scholak 2021)", authors:"Scholak et al.", year:2021, title:"PICARD: Parsing Incrementally for Constrained Auto-Regressive Decoding", venue:"EMNLP 2021", url:"https://arxiv.org/abs/2109.05093" },
+  xgrammar:   { short:"XGrammar (Dong 2024)", authors:"Dong et al.", year:2024, title:"XGrammar: Flexible and Efficient Structured Generation Engine for LLMs", venue:"arXiv:2411.15100", url:"https://arxiv.org/abs/2411.15100" },
+  xgrammar2:  { short:"XGrammar-2 (2026)", authors:"(2026)", year:2026, title:"XGrammar-2: Efficient Dynamic Structured Generation Engine for Agentic LLMs", venue:"arXiv:2601.04426", url:"https://arxiv.org/abs/2601.04426" },
+  // --- validation / verification ---
+  selfrefine: { short:"Self-Refine (Madaan 2023)", authors:"Madaan et al.", year:2023, title:"Self-Refine: Iterative Refinement with Self-Feedback", venue:"NeurIPS 2023", url:"https://arxiv.org/abs/2303.17651" },
+  critic:     { short:"CRITIC (Gou 2023)", authors:"Gou et al.", year:2023, title:"CRITIC: LLMs Can Self-Correct with Tool-Interactive Critiquing", venue:"ICLR 2024", url:"https://arxiv.org/abs/2305.11738" },
+  letsverify: { short:"Let's Verify Step by Step (Lightman 2023)", authors:"Lightman et al.", year:2023, title:"Let's Verify Step by Step (process reward models)", venue:"ICLR 2024", url:"https://arxiv.org/abs/2305.20050" },
+  mtbench:    { short:"LLM-as-judge (Zheng 2023)", authors:"Zheng et al.", year:2023, title:"Judging LLM-as-a-Judge with MT-Bench and Chatbot Arena", venue:"NeurIPS 2023", url:"https://arxiv.org/abs/2306.05685" },
+  // --- recovery / self-repair ---
+  reflexion:  { short:"Reflexion (Shinn 2023)", authors:"Shinn et al.", year:2023, title:"Reflexion: Language Agents with Verbal Reinforcement Learning", venue:"NeurIPS 2023", url:"https://arxiv.org/abs/2303.11366" },
+  selfdebug:  { short:"Self-Debug (Chen 2023)", authors:"Chen et al.", year:2023, title:"Teaching Large Language Models to Self-Debug", venue:"ICLR 2024", url:"https://arxiv.org/abs/2304.05128" },
+  score:      { short:"SCoRe (Kumar 2024)", authors:"Kumar et al.", year:2024, title:"Training Language Models to Self-Correct via Reinforcement Learning", venue:"arXiv:2409.12917", url:"https://arxiv.org/abs/2409.12917" },
+  // --- tools / orchestration ---
+  toolformer: { short:"Toolformer (Schick 2023)", authors:"Schick et al.", year:2023, title:"Toolformer: Language Models Can Teach Themselves to Use Tools", venue:"NeurIPS 2023", url:"https://arxiv.org/abs/2302.04761" },
+  gorilla:    { short:"Gorilla (Patil 2023)", authors:"Patil et al.", year:2023, title:"Gorilla: Large Language Model Connected with Massive APIs", venue:"arXiv:2305.15334", url:"https://arxiv.org/abs/2305.15334" },
+  toolllm:    { short:"ToolLLM (Qin 2023)", authors:"Qin et al.", year:2023, title:"ToolLLM: Facilitating LLMs to Master 16000+ Real-World APIs", venue:"ICLR 2024", url:"https://arxiv.org/abs/2307.16789" },
+  bfcl:       { short:"Berkeley Function-Calling Leaderboard (Patil 2025)", authors:"Patil et al.", year:2025, title:"The Berkeley Function Calling Leaderboard: From Tool Use to Agentic Evaluation", venue:"ICML 2025", url:"https://gorilla.cs.berkeley.edu/leaderboard.html" },
+  toolace:    { short:"ToolACE (2024)", authors:"Liu et al.", year:2024, title:"ToolACE: Winning the Points of LLM Function Calling", venue:"arXiv:2409.00920", url:"https://arxiv.org/abs/2409.00920" },
+  huggingpt:  { short:"HuggingGPT (Shen 2023)", authors:"Shen et al.", year:2023, title:"HuggingGPT: Solving AI Tasks with ChatGPT and its Friends in Hugging Face", venue:"NeurIPS 2023", url:"https://arxiv.org/abs/2303.17580" },
+  autogen:    { short:"AutoGen (Wu 2023)", authors:"Wu et al.", year:2023, title:"AutoGen: Enabling Next-Gen LLM Applications via Multi-Agent Conversation", venue:"arXiv:2308.08155", url:"https://arxiv.org/abs/2308.08155" },
+  metagpt:    { short:"MetaGPT (Hong 2023)", authors:"Hong et al.", year:2023, title:"MetaGPT: Meta Programming for a Multi-Agent Collaborative Framework", venue:"ICLR 2024", url:"https://arxiv.org/abs/2308.00352" },
+  chatdev:    { short:"ChatDev (Qian 2023)", authors:"Qian et al.", year:2023, title:"ChatDev: Communicative Agents for Software Development", venue:"ACL 2024", url:"https://arxiv.org/abs/2307.07924" },
+  masurvey:   { short:"Multi-agent comms survey (2025)", authors:"Yan et al.", year:2025, title:"Beyond Self-Talk: A Communication-Centric Survey of LLM-Based Multi-Agent Systems", venue:"arXiv:2502.14321", url:"https://arxiv.org/abs/2502.14321" },
+  routellm:   { short:"RouteLLM (Ong 2024)", authors:"Ong et al.", year:2024, title:"RouteLLM: Learning to Route LLMs with Preference Data", venue:"arXiv:2406.18665", url:"https://arxiv.org/abs/2406.18665" },
+  frugalgpt:  { short:"FrugalGPT (Chen 2023)", authors:"Chen et al.", year:2023, title:"FrugalGPT: How to Use LLMs While Reducing Cost and Improving Performance", venue:"arXiv:2305.05176", url:"https://arxiv.org/abs/2305.05176" },
+  dspy:       { short:"DSPy (Khattab 2023)", authors:"Khattab et al.", year:2023, title:"DSPy: Compiling Declarative Language Model Calls into Self-Improving Pipelines", venue:"ICLR 2024", url:"https://arxiv.org/abs/2310.03714" },
+  opro:       { short:"OPRO (Yang 2023)", authors:"Yang et al.", year:2023, title:"Large Language Models as Optimizers", venue:"ICLR 2024", url:"https://arxiv.org/abs/2309.03409" },
+  textgrad:   { short:"TextGrad (Yuksekgonul 2024)", authors:"Yuksekgonul et al.", year:2024, title:"TextGrad: Automatic Differentiation via Text", venue:"arXiv:2406.07496", url:"https://arxiv.org/abs/2406.07496" },
+  mcp:        { short:"MCP (Anthropic 2024)", authors:"Anthropic", year:2024, title:"Introducing the Model Context Protocol", venue:"modelcontextprotocol.io", url:"https://modelcontextprotocol.io" },
+  // --- evaluation ---
+  agentbench: { short:"AgentBench (Liu 2023)", authors:"Liu et al.", year:2023, title:"AgentBench: Evaluating LLMs as Agents", venue:"ICLR 2024", url:"https://arxiv.org/abs/2308.03688" },
+  gaia:       { short:"GAIA (Mialon 2023)", authors:"Mialon et al.", year:2023, title:"GAIA: A Benchmark for General AI Assistants", venue:"ICLR 2024", url:"https://arxiv.org/abs/2311.12983" },
+  taubench:   { short:"τ-bench (Yao 2024)", authors:"Yao et al.", year:2024, title:"τ-bench: A Benchmark for Tool-Agent-User Interaction in Real-World Domains", venue:"arXiv:2406.12045", url:"https://arxiv.org/abs/2406.12045" },
+  tau2bench:  { short:"τ²-bench (Barres 2025)", authors:"Barres et al.", year:2025, title:"τ²-Bench: Evaluating Conversational Agents in a Dual-Control Environment", venue:"arXiv:2506.07982", url:"https://arxiv.org/abs/2506.07982" },
+  hal:        { short:"Holistic Agent Leaderboard (2025)", authors:"Stroebl et al.", year:2025, title:"HAL: A Holistic, Cost-Aware Agent Leaderboard", venue:"arXiv:2510.11977", url:"https://arxiv.org/abs/2510.11977" },
+  swebench:   { short:"SWE-bench (Jimenez 2024)", authors:"Jimenez et al.", year:2024, title:"SWE-bench: Can Language Models Resolve Real-World GitHub Issues?", venue:"ICLR 2024", url:"https://arxiv.org/abs/2310.06770" },
+  sweabs:     { short:"SWE-ABS (2026)", authors:"(2026)", year:2026, title:"Adversarial Benchmark Strengthening Exposes Inflated Success Rates on Test-Based Benchmarks", venue:"arXiv:2603.00520", url:"https://arxiv.org/abs/2603.00520" },
+  // --- safety / security ---
+  greshake:   { short:"Indirect Prompt Injection (Greshake 2023)", authors:"Greshake et al.", year:2023, title:"Not What You've Signed Up For: Compromising LLM-Integrated Apps with Indirect Prompt Injection", venue:"AISec 2023", url:"https://arxiv.org/abs/2302.12173" },
+  agentdojo:  { short:"AgentDojo (Debenedetti 2024)", authors:"Debenedetti et al.", year:2024, title:"AgentDojo: A Dynamic Environment to Evaluate Prompt Injection Attacks and Defenses for LLM Agents", venue:"NeurIPS 2024 D&B", url:"https://arxiv.org/abs/2406.13352" },
+  nemo:       { short:"NeMo Guardrails (Rebedea 2023)", authors:"Rebedea et al.", year:2023, title:"NeMo Guardrails: A Toolkit for Controllable and Safe LLM Applications", venue:"EMNLP 2023 (demo)", url:"https://arxiv.org/abs/2310.10501" },
+  // --- IETF (work-in-progress I-Ds / BoFs / lists) ---
+  catalist:   { short:"CATALIST problem space (I-D)", authors:"Yao et al.", year:2026, title:"CATALIST: Problem Space Analysis for Agent-to-Agent Communication", venue:"IETF I-D (draft-yao-catalist-problem-space-analysis)", url:"https://datatracker.ietf.org/doc/draft-yao-catalist-problem-space-analysis/" },
+  acip:       { short:"ACIP framework (I-D)", authors:"Eckert et al.", year:2026, title:"Agent Communications Internet Protocol (ACIP) Framework", venue:"IETF I-D (draft-eckert-catalist-acip-framework)", url:"https://datatracker.ietf.org/doc/draft-eckert-catalist-acip-framework/" },
+  catroute:   { short:"A2A routing considerations (I-D)", authors:"Du et al.", year:2026, title:"Routing Considerations for Agent-to-Agent Communication", venue:"IETF I-D (draft-du-catalist-routing-considerations)", url:"https://datatracker.ietf.org/doc/draft-du-catalist-routing-considerations/" },
+  agentproto: { short:"agentproto BoF request", authors:"Krishnan et al.", year:2026, title:"Agent Communication Protocols (agentproto) BoF Request", venue:"IETF BoF request", url:"https://datatracker.ietf.org/doc/bofreq-krishnan-agent-communication-protocols/" },
+  audit:      { short:"AUDIT BoF request", authors:"Kühlewind et al.", year:2026, title:"Agent Use of Delegation and Interaction Traceability (AUDIT) BoF Request", venue:"IETF BoF request", url:"https://datatracker.ietf.org/doc/bofreq-kuhlewind-agent-use-of-delegation-and-interaction-traceability-audit/" },
+  aiprefvocab:{ short:"AIPREF vocabulary (WG I-D)", authors:"IETF AIPREF WG", year:2026, title:"A Vocabulary for Expressing AI Usage Preferences", venue:"IETF I-D (draft-ietf-aipref-vocab)", url:"https://datatracker.ietf.org/doc/draft-ietf-aipref-vocab/" },
+  aiprefattach:{ short:"AIPREF attachment in HTTP (WG I-D)", authors:"IETF AIPREF WG", year:2026, title:"Attaching AI Usage Preferences in HTTP (updates RFC 9309)", venue:"IETF I-D (draft-ietf-aipref-attach)", url:"https://datatracker.ietf.org/doc/draft-ietf-aipref-attach/" },
+  iotagent:   { short:"IoT agents over CoAP (I-D)", authors:"Jimenez et al.", year:2026, title:"AI Agents for IoT: CoAP + Hypermedia Discovery and Interaction", venue:"IETF I-D (draft-jimenez-t2trg-iot-agent)", url:"https://datatracker.ietf.org/doc/draft-jimenez-t2trg-iot-agent/" },
+  dawn:       { short:"dawn (discovery list)", authors:"IETF", year:2026, title:"dawn: Discovery of AI agents, tools, and endpoints (mailing list)", venue:"IETF mailing list", url:"https://mailarchive.ietf.org/arch/browse/dawn/" },
+  agent2agent:{ short:"agent2agent (list)", authors:"IETF", year:2026, title:"agent2agent: Standardization of AI agent communications (mailing list)", venue:"IETF mailing list", url:"https://mailarchive.ietf.org/arch/browse/agent2agent/" },
+  aidc:       { short:"aidc (DC networking list)", authors:"IETF", year:2026, title:"aidc: Data-center networking for AI clusters (mailing list)", venue:"IETF mailing list", url:"https://mailarchive.ietf.org/arch/browse/aidc/" }
+};
+
+/* ===========================================================================
+   Concept data. Node fields:
+   { name, def, why?, cite?[topPapers], recent?[[id,"finding"]], impl?[tools], children? }
+   =========================================================================== */
+const DATA = {
+  name: "AI Agent = Harness + LLM",
+  def: "An AI agent is an LLM wrapped in a Harness. So AI Agent R&D = Harness R&D + LLM R&D + R&D on the glue between them. This map opens each branch into its sub-fields, with 3 seminal papers (Top papers) and recent results (Recent findings) per field.",
+  why: "Splitting the agent into Harness, LLM, and the interface between them tells you where each research problem actually lives — and which community already owns it.",
+  cite: ["react","instructgpt"],
+  children: [
+
+    /* ===================== HARNESS ===================== */
+    { name: "Harness  (R&D)", def: "The system layer around the model: it constructs context, holds memory/state, plans and controls the loop, constrains and validates output, recovers from failure, orchestrates tools/models, and measures everything. Harness = Tools + Memory + Context + Planning + Constraints + Validation + Recovery + Orchestration + Evaluation + Safety.",
+      why: "Most of an agent's reliability comes from the harness, not the model — the same model in a better harness moves benchmark scores as much as a model upgrade.",
+      cite: ["react","reflexion","mcp"],
+      recent: [
+        ["mem0","Production memory layer: ~26% higher accuracy than full-context with far fewer tokens on long dialogues."],
+        ["selfrag","Model learns to retrieve on demand and self-critique with reflection tokens, beating vanilla RAG."],
+        ["lats","Monte-Carlo tree search over ReAct steps + self-reflection unifies reasoning, acting, and planning."],
+        ["score","Multi-turn RL teaches genuine self-correction from the model's own samples — SFT alone does not."],
+        ["agentdojo","Dynamic prompt-injection benchmark: even strong agents get hijacked; current defenses are only partial."],
+        ["routellm","A preference-trained router cuts cost >50% while matching strong-model quality."],
+        ["masurvey","Communication-centric survey: multi-agent gains come from interaction protocols, not just more agents."],
+        ["tau2bench","Dual-control (the user can also act) sharply lowers reliability vs single-control τ-bench."],
+        ["hal","Holistic Agent Leaderboard makes cost a first-class axis — cheaper scaffolds can beat pricier ones."],
+        ["sweabs","Strengthening hidden tests drops 'solved' SWE-bench scores ~17 pts — oracle quality inflates results."]
+      ],
+      impl: ["LangChain / LangGraph","AutoGen","CrewAI","OpenAI Agents SDK","Claude Agent SDK","Semantic Kernel"],
+      children: [
+        { name: "Context Construction", def: "Assembling what the model sees each turn — retrieval, summarization, reformulation — so the right facts are in the window.", cite: ["rag","lostmiddle","selfrag"], impl: ["LangChain","LlamaIndex","Chroma","Weaviate","Microsoft GraphRAG"], children: [
+          { name: "Retrieval / RAG", def: "Fetch relevant chunks from a corpus and inject them into the prompt.", cite: ["rag"] },
+          { name: "Summarization", def: "Compress prior turns or documents to fit the window." },
+          { name: "Prompt reinjection", def: "Re-insert goals, constraints, or tool results so they stay salient (counters lost-in-the-middle).", cite: ["lostmiddle"] },
+          { name: "Task reformulation", def: "Rewrite the user's request into a model-friendly, decomposed instruction." },
+          { name: "State construction", def: "Build the working context from task state + memory + tool outputs each turn." }
+        ]},
+        { name: "Memory & State", def: "Persisting information across turns — short-term, episodic, and semantic stores plus a tracked world state.", cite: ["memgpt","genagents","memorybank"], impl: ["Letta (MemGPT)","Mem0","Zep","LangMem"], children: [
+          { name: "Short-term memory", def: "The running conversation/scratchpad within a session." },
+          { name: "Episodic memory", def: "Recallable records of past events and interactions.", cite: ["genagents"] },
+          { name: "Semantic memory", def: "Distilled facts and knowledge the agent reuses." },
+          { name: "User preferences", def: "Durable per-user settings and style the agent should honor." },
+          { name: "World-state tracking", def: "An explicit model of the environment the agent maintains and updates." }
+        ]},
+        { name: "Tools & Connectivity", def: "How the agent acts on the world — function calls, MCP servers, connectors, code execution.", cite: ["toolformer","gorilla","mcp"], impl: ["Model Context Protocol","Composio","FastMCP","E2B"], children: [
+          { name: "Function / tool calling", def: "The model emits a structured call; the harness runs it and returns the result.", cite: ["gorilla"] },
+          { name: "MCP", def: "Model Context Protocol: a standard interface to expose tools, data, and resources to agents.", cite: ["mcp"] },
+          { name: "Code execution", def: "Run code in a sandbox as a tool (the coding-agent feedback loop)." },
+          { name: "Connectors", def: "SaaS/API connectors, webhooks, and messaging channels." }
+        ]},
+        { name: "Planning & Control", def: "Deciding what to do next and when to stop — reasoning loops, search over actions, branching, budget control.", cite: ["react","tot","lats"], children: [
+          { name: "ReAct loops", def: "Interleave reasoning with tool actions and observations.", cite: ["react"] },
+          { name: "Planning / decomposition", def: "Break a goal into steps and adapt the plan." },
+          { name: "Branching / search", def: "Explore multiple paths (tree/graph search) and evaluate them.", cite: ["tot"] },
+          { name: "Stopping criteria", def: "Decide when the task is done or to give up." },
+          { name: "Budget-aware search", def: "Bound steps, tokens, and cost while searching.", cite: ["lats"] }
+        ]},
+        { name: "Constrained Generation", def: "Force the output to be well-formed — grammars, schemas, typed decoding turn free text into valid structure.", cite: ["gcd","outlines","xgrammar"], impl: ["Outlines","XGrammar","Guidance","Instructor"], children: [
+          { name: "BNF / grammar constraints", def: "Restrict decoding to a context-free grammar.", cite: ["gcd"] },
+          { name: "JSON schema", def: "Force outputs to validate against a JSON schema." },
+          { name: "Typed outputs", def: "Decode directly into typed objects." },
+          { name: "Structured decoding", def: "Mask invalid tokens at each step for 100% structural validity.", cite: ["xgrammar"] },
+          { name: "Ontologies / DSLs", def: "Constrain generation to a domain-specific language or ontology." }
+        ]},
+        { name: "Validation & Verification", def: "Check whether an output is correct, not just well-formed — validators, rule checks, tests, critic models.", cite: ["selfrefine","critic","letsverify"], impl: ["Ragas","DeepEval","Promptfoo"], children: [
+          { name: "Validators / rule checks", def: "Deterministic checks against schemas, types, and business rules." },
+          { name: "Unit tests / simulations", def: "Execute the output against tests or a simulator (the cheap objective oracle)." },
+          { name: "Critic models", def: "A model critiques or scores the output, sometimes with tools.", cite: ["critic"] },
+          { name: "Process verifiers", def: "Reward/verify intermediate reasoning steps, not just the final answer.", cite: ["letsverify"] }
+        ]},
+        { name: "Recovery & Self-Repair", def: "Turn failures into progress — retries, error-aware reprompting, rollback, fallback, self-reflection.", cite: ["reflexion","selfdebug","score"], children: [
+          { name: "Retries", def: "Re-attempt failed steps, optionally with backoff." },
+          { name: "Error-aware reprompting", def: "Feed the error/trace back into the prompt to fix the next attempt.", cite: ["selfdebug"] },
+          { name: "Rollback", def: "Revert to a known-good checkpoint and try a different path." },
+          { name: "Fallback strategies", def: "Degrade to a simpler tool, model, or human handoff." },
+          { name: "Self-reflection", def: "The agent critiques its own trajectory and updates its approach.", cite: ["reflexion"] }
+        ]},
+        { name: "Multi-Model / Tool Orchestration", def: "Route work across models and tools — planners, critics, routers, specialized executors.", cite: ["huggingpt","autogen","routellm"], impl: ["AutoGen","CrewAI","OpenRouter","LiteLLM"], children: [
+          { name: "Planner / executor", def: "One model plans; others (or tools) execute.", cite: ["huggingpt"] },
+          { name: "Generator / critic", def: "Pair a generator with a critic/verifier loop." },
+          { name: "Router model", def: "Send each query to the cheapest model that can handle it.", cite: ["routellm"] },
+          { name: "Multi-agent collaboration", def: "Several role-specialized agents cooperate.", cite: ["autogen"] },
+          { name: "Model selection", def: "Choose model/size per step (build expensive, run cheap).", cite: ["frugalgpt"] }
+        ]},
+        { name: "Evaluation & Observability", def: "Measure reliability, cost, and failure modes — agent benchmarks, tracing, failure analysis.", cite: ["agentbench","gaia","taubench"], impl: ["Langfuse","Arize Phoenix","Braintrust","Ragas"], children: [
+          { name: "Reliability metrics", def: "pass^k / reliability under repetition, not just single-shot accuracy.", cite: ["taubench"] },
+          { name: "Latency / cost", def: "Cost-aware evaluation as a first-class axis.", cite: ["hal"] },
+          { name: "Trace logging", def: "Full step/tool/cost traces for debugging and audit." },
+          { name: "Benchmark mutation", def: "Adversarially strengthen tests to expose inflated scores.", cite: ["sweabs"] },
+          { name: "Failure analysis", def: "Categorize and root-cause agent failures systematically." }
+        ]},
+        { name: "Guardrails & Safety", def: "Keep the agent inside policy — input/output filters, prompt-injection defense, tool-use constraints.", cite: ["greshake","agentdojo","cai"], impl: ["NeMo Guardrails","Guardrails AI","Llama Guard","Lakera"], children: [
+          { name: "Prompt-injection defense", def: "Resist untrusted data hijacking the agent's instructions.", cite: ["greshake"] },
+          { name: "Input / output filters", def: "Block unsafe inputs and outputs." },
+          { name: "Tool-use constraints", def: "Restrict which tools/actions are permitted in context." },
+          { name: "Policies", def: "Encoded rules enforced across the loop (the harness as reference monitor)." }
+        ]},
+        { name: "Identity & Permissions", def: "Who the agent is and what it may do — identity, delegation, scoped permissions, audit. The harness is the reference monitor.", impl: ["Auth0","Keycloak","Open Policy Agent (OPA)","Cedar"], children: [
+          { name: "Agent identity", def: "A verifiable identity for the agent/workload (links to IETF WIMSE/SPIFFE-style work)." },
+          { name: "Delegation", def: "Acting on a user's behalf with a verifiable delegation chain (links to IETF AUDIT)." },
+          { name: "Scoped permissions", def: "Least-privilege, per-tool authorization (RBAC / policy)." },
+          { name: "Audit", def: "Tamper-evident records of intent, delegation, and actions." }
+        ]}
+      ]},
+
+    /* ===================== LLM ===================== */
+    { name: "LLM  (R&D)", def: "The probabilistic core: a neural network that predicts the next token. LLM R&D is about making that core more capable, cheaper, longer-context, better-reasoning, and more controllable.",
+      why: "The LLM sets the ceiling on capability and most of the cost — but progress here is increasingly commoditized, which is why the frontier is shifting to the harness and the glue.",
+      cite: ["transformer","gpt3","instructgpt"],
+      recent: [
+        ["deepseekr1","Pure RL (no SFT) elicits emergent reasoning — self-reflection, verification — matching o1 on math/code."],
+        ["latentreason","Recurrent-depth latent reasoning scales test-time compute without emitting more tokens."],
+        ["deepseekv3","671B MoE (37B active) with MLA + auxiliary-loss-free balancing; frontier quality at ~$5.6M training cost."],
+        ["medusa","Extra decoding heads + tree attention give 2-3x speedup with no separate draft model."],
+        ["longrope","Exploits RoPE non-uniformity to extend context past 2M tokens with little fine-tuning."],
+        ["yarn","NTK-by-parts + attention temperature extends context with ~10x fewer tokens than position interpolation."],
+        ["batchinvariant","Inference nondeterminism traced to non-batch-invariant kernels; fixing them yields bitwise-identical outputs."],
+        ["dpo","Direct Preference Optimization aligns models without a separate reward model or RL loop — simpler and stable."],
+        ["lcserve","Long-context serving has CAP-style trade-offs: you can't maximize context, accuracy, and throughput at once."],
+        ["efficientllm","Survey: quantization, pruning, distillation, and MoE are the practical levers for cheap inference."]
+      ],
+      impl: ["OpenAI","Anthropic","Google Gemini","Meta Llama","DeepSeek","Mistral","Qwen"],
+      children: [
+        { name: "Architecture & Pretraining", def: "The transformer core, scaling laws, and how base models are trained.", cite: ["transformer","gpt3","chinchilla"], children: [
+          { name: "Transformer / attention", def: "The attention-based architecture underlying modern LLMs.", cite: ["transformer"] },
+          { name: "Scaling laws", def: "Compute-optimal trade-offs between model size and data.", cite: ["chinchilla"] },
+          { name: "Mixture-of-Experts (MoE)", def: "Activate a subset of experts per token for capacity at lower compute.", cite: ["deepseekv3"] },
+          { name: "Tokenization", def: "How text is split into tokens — the unit the model reads/writes." },
+          { name: "Multimodality", def: "Extending the core to images, audio, and video." }
+        ]},
+        { name: "Post-training & Alignment", def: "Turning a base model into a helpful, harmless, instruction-following assistant.", cite: ["instructgpt","dpo","cai"], children: [
+          { name: "Supervised fine-tuning (SFT)", def: "Fine-tune on curated instruction/response data." },
+          { name: "RLHF", def: "Reinforcement learning from human feedback via a reward model.", cite: ["instructgpt"] },
+          { name: "DPO / preference optimization", def: "Align directly from preferences without an explicit reward model or RL loop.", cite: ["dpo"] },
+          { name: "Constitutional AI / RLAIF", def: "Use AI feedback against a set of principles to reduce human labeling.", cite: ["cai"] }
+        ]},
+        { name: "Reasoning", def: "Making the core deliberate before answering — chain-of-thought, RL-trained reasoning, test-time compute.", cite: ["cot","deepseekr1","latentreason"], impl: ["OpenAI o-series","DeepSeek-R1","Claude extended thinking"], children: [
+          { name: "Chain-of-thought", def: "Prompt the model to reason step by step.", cite: ["cot"] },
+          { name: "RL-trained reasoning", def: "Train reasoning behavior with RL on verifiable rewards.", cite: ["deepseekr1"] },
+          { name: "Test-time compute", def: "Spend more inference compute (search/latent depth) for harder problems.", cite: ["latentreason"] },
+          { name: "Self-consistency", def: "Sample multiple reasoning paths and vote." }
+        ]},
+        { name: "Long Context", def: "Extending the usable context window and using it well.", cite: ["posinterp","yarn","longrope"], children: [
+          { name: "Position interpolation", def: "Rescale positions to extend RoPE-based context.", cite: ["posinterp"] },
+          { name: "YaRN", def: "Efficient NTK-aware context extension.", cite: ["yarn"] },
+          { name: "LongRoPE", def: "Extend context past 2M tokens via non-uniform RoPE scaling.", cite: ["longrope"] },
+          { name: "Lost-in-the-middle", def: "Models under-use the middle of long contexts.", cite: ["lostmiddle"] },
+          { name: "KV-cache management", def: "Compress/evict the cache to serve long context cheaply." }
+        ]},
+        { name: "Efficiency & Serving", def: "Making inference cheap and fast — quantization, distillation, MoE, speculative decoding, small models.", cite: ["distill","medusa","efficientllm"], impl: ["vLLM","Ollama","llama.cpp","Unsloth"], children: [
+          { name: "Quantization", def: "Lower-precision weights/activations for cheaper inference." },
+          { name: "Distillation", def: "Train a small model to mimic a large one.", cite: ["distill"] },
+          { name: "Speculative decoding", def: "Draft multiple tokens and verify in parallel.", cite: ["medusa"] },
+          { name: "Small language models (SLMs)", def: "Cheap, local models for routine steps (build-expensive / run-cheap)." }
+        ]},
+        { name: "Decoding & Determinism", def: "How tokens are selected, and whether inference is reproducible.", cite: ["batchinvariant","llm42","medusa"], children: [
+          { name: "Sampling", def: "Temperature, top-p/top-k — turning logits into tokens." },
+          { name: "Batch-invariance", def: "Non-batch-invariant kernels cause nondeterminism; fixing them gives identical outputs.", cite: ["batchinvariant"] },
+          { name: "Verified speculation", def: "Restore determinism while keeping speculative speedups.", cite: ["llm42"] }
+        ]}
+      ]},
+
+    /* ===================== GLUE ===================== */
+    { name: "Glue  (Harness ↔ LLM)", def: "The interface between harness and model: how text becomes actions, how structure is enforced, how prompts are engineered, how state crosses the boundary, and how runs are reproduced. This is the 'R&D on the glue' — easy to overlook, decisive in practice.",
+      why: "The harness and the model each improve fast, but the contract between them — tool-call format, structured output, state transfer, determinism — is where many real-world failures actually live.",
+      cite: ["toolformer","outlines","mcp"],
+      recent: [
+        ["gorilla","Retriever-aware fine-tuning lets LLMs call thousands of APIs with far fewer hallucinated calls."],
+        ["bfcl","The Berkeley Function-Calling Leaderboard's AST-based eval exposes large gaps in parallel/multi-step calls."],
+        ["toolace","A synthetic-data pipeline yields function-calling accuracy rivaling far larger models."],
+        ["xgrammar","Splitting the vocabulary into context-(in)dependent tokens gives ~100x faster grammar-constrained decoding."],
+        ["xgrammar2","A dynamic structured-generation engine tuned for agentic, frequently-changing tool grammars."],
+        ["opro","LLMs as optimizers: iteratively propose better instructions from a scored history."],
+        ["textgrad","Backpropagate natural-language 'gradients' through an LLM pipeline to optimize prompts and components."],
+        ["batchinvariant","Determinism at the harness-model boundary requires batch-invariant kernels."],
+        ["llm42","Verified speculation restores reproducibility in LLM inference with little speed loss."],
+        ["routellm","Cost-aware routing is part of the interface: send easy queries to cheap models."]
+      ],
+      impl: ["OpenAI function calling","Anthropic tool use","Outlines","XGrammar","Instructor","DSPy"],
+      children: [
+        { name: "Tool / Function-calling interface", def: "The contract by which the model requests an action and the harness executes it.", cite: ["toolformer","gorilla","bfcl"], impl: ["OpenAI function calling","Anthropic tool use","Gorilla"], children: [
+          { name: "Function-calling schema", def: "How tools and their arguments are declared to the model." },
+          { name: "Tool schemas / specs", def: "Machine-readable tool definitions (incl. MCP).", cite: ["mcp"] },
+          { name: "Function-calling evaluation", def: "Measuring call correctness, parallel and multi-step.", cite: ["bfcl"] }
+        ]},
+        { name: "Structured I/O contract", def: "Guaranteeing the model's output is parseable and typed at the boundary.", cite: ["outlines","gcd","xgrammar"], impl: ["Outlines","XGrammar","Instructor"], children: [
+          { name: "JSON / schema mode", def: "Constrain output to a JSON schema." },
+          { name: "Grammar / BNF", def: "Constrain output to a formal grammar.", cite: ["gcd"] },
+          { name: "Typed decoding", def: "Decode directly into typed objects with validation." }
+        ]},
+        { name: "Prompt & format engineering", def: "Designing and optimizing the text the model receives — templates, examples, automatic optimization.", cite: ["dspy","opro","textgrad"], impl: ["DSPy","TextGrad"], children: [
+          { name: "Templating", def: "Structured prompt templates separating instructions, context, and data." },
+          { name: "Prompt optimization", def: "Automatically search/optimize instructions.", cite: ["opro"] },
+          { name: "Pipeline compilation", def: "Compile declarative LLM programs and optimize them.", cite: ["dspy"] },
+          { name: "Format sensitivity", def: "Output/behavior depends on formatting — a real robustness issue." }
+        ]},
+        { name: "State & KV-cache interface", def: "How session/task state and the KV-cache cross the harness-model boundary — and who owns it (the stateless-REST view).", cite: ["memgpt","batchinvariant"], children: [
+          { name: "Context-window management", def: "Decide what state is sent each call." },
+          { name: "KV-cache reuse", def: "Reuse cached keys/values across turns to cut cost." },
+          { name: "Checkpoint / session", def: "Name and restore a run (checkpoint = URL, session = cookie)." },
+          { name: "Statelessness (REST view)", def: "The harness owns state; the model is a stateless server." }
+        ]},
+        { name: "Reproducibility contract", def: "What it takes to reproduce a run exactly: seed, sampler, core numerics, harness state.", cite: ["batchinvariant","llm42"], children: [
+          { name: "Seed & sampler", def: "Fix randomness in token selection." },
+          { name: "Core numerics", def: "Batch-invariant kernels for bitwise-identical outputs.", cite: ["batchinvariant"] },
+          { name: "Determinism vs speed", def: "Trade a small slowdown for reproducibility.", cite: ["llm42"] }
+        ]},
+        { name: "Routing & model selection", def: "Choosing which model/size handles each request — part of the interface, not just the harness.", cite: ["routellm","frugalgpt"], impl: ["OpenRouter","LiteLLM"], children: [
+          { name: "Router models", def: "Learned routers send queries to the cheapest capable model.", cite: ["routellm"] },
+          { name: "Cascades", def: "Try cheap models first, escalate on low confidence.", cite: ["frugalgpt"] },
+          { name: "Build-expensive / run-cheap", def: "Compile behavior with a strong model, run with a small one." }
+        ]}
+      ]},
+
+    /* ===================== IETF ===================== */
+    { name: "IETF  (standardization)", def: "Where the Internet community is standardizing the agent stack: agent-to-agent communication, discovery, identity/delegation/audit, AI-usage preferences, and IoT/edge agents. Early I-Ds and BoFs — a rare chance to shape the standards.",
+      why: "The same problems this map calls 'glue' and 'harness' (protocols, discovery, identity, audit) are exactly what the IETF has just opened — the venues to influence them exist now.",
+      cite: ["catalist","audit","aiprefvocab"],
+      recent: [
+        ["catalist","CATALIST frames agent-to-agent communication as an Internet-protocol problem and identifies candidate WGs."],
+        ["acip","The ACIP framework proposes an Agent Communications Internet Protocol for A2A infrastructure."],
+        ["catroute","Treats A2A traffic as a new class with cross-domain routing considerations (the 'agentic network')."],
+        ["agentproto","The agentproto BoF proposes protocol building blocks for cross-vendor agent/tool interoperability."],
+        ["audit","The AUDIT BoF defines data models to correlate user intent, delegation chains, and authorization for auditing."],
+        ["aiprefvocab","The AIPREF WG vocabulary lets content owners declare permissions/restrictions for automated and AI use."],
+        ["aiprefattach","AIPREF preferences are signaled during HTTP acquisition, updating robots.txt (RFC 9309)."],
+        ["iotagent","LLM agents discover and drive IoT devices over CoAP + hypermedia with no pre-configured device knowledge."],
+        ["dawn","The dawn list scopes discovery of agents, tools, and endpoints using IETF technologies."],
+        ["aidc","The aidc list covers data-center networking for the AI-cluster serving substrate."]
+      ],
+      impl: ["IETF datatracker","CATALIST","AIPREF WG","T2TRG"],
+      children: [
+        { name: "Agent-to-agent communication (CATALIST)", def: "A proposed BoF cluster framing A2A communication as an Internet-protocol problem, with a candidate 'Agent Communications Internet Protocol' (ACIP).", cite: ["catalist","acip","catroute"], children: [
+          { name: "Problem-space analysis", def: "Identify the IETF-relevant problem space and candidate WGs.", cite: ["catalist"] },
+          { name: "ACIP framework", def: "Use cases, gaps, and a framework for an A2A communications protocol.", cite: ["acip"] },
+          { name: "Routing considerations", def: "A2A as a new traffic class; cross-domain routing in the agentic network.", cite: ["catroute"] }
+        ]},
+        { name: "agentproto (BoF)", def: "Proposed BoF for protocol building blocks enabling cross-vendor agent and agent-tool interoperability over the Internet.", cite: ["agentproto"] },
+        { name: "Discovery (dawn / agent2agent)", def: "Discovery of agents, tools, and endpoints using IETF technologies; A2A standardization discussion lists.", cite: ["dawn","agent2agent"] },
+        { name: "Identity, delegation & audit (AUDIT)", def: "Data models for auditing distributed agent interactions: correlating user intent, delegation chains, authorization, and propagating audit context. Links to the Harness 'Identity & Permissions' branch.", cite: ["audit"] },
+        { name: "AI-usage preferences (AIPREF WG)", def: "Standardizing how content owners signal preferences for AI/automated use of their content — vocabulary + HTTP attachment (updates robots.txt).", cite: ["aiprefvocab","aiprefattach"] },
+        { name: "IoT / edge agents (t2trg)", def: "Architecture for LLM agents that discover and interact with IoT devices via CoAP and hypermedia, using in-band CoRE resource discovery.", cite: ["iotagent"] },
+        { name: "Data-center substrate (aidc)", def: "Networking for AI clusters — the serving substrate beneath agent workloads.", cite: ["aidc"] }
+      ]}
+  ]
+};
+
+/* ---------- Setup ---------- */
+const svg = d3.select("svg");
+const gZoom = svg.append("g");
+const gLink = gZoom.append("g");
+const gNode = gZoom.append("g");
+
+const palette = d3.scaleOrdinal()
+  .domain(["Harness  (R&D)","LLM  (R&D)","Glue  (Harness ↔ LLM)","IETF  (standardization)"])
+  .range(["#6ea8fe","#c792ea","#80cbc4","#ffab91"]);
+const dx = 20, dy = 250;
+const tree = d3.tree().nodeSize([dx, dy]);
+const diagonal = d3.linkHorizontal().x(d => d.y).y(d => d.x);
+
+const root = d3.hierarchy(DATA);
+root.x0 = 0; root.y0 = 0;
+let idc = 0;
+root.descendants().forEach(d => {
+  d.id = ++idc;
+  d._children = d.children;
+  d.branch = (d.depth >= 1) ? d.ancestors().reverse()[1].data.name : "root";
+  if (d.depth >= 1) d.children = null;
+});
+
+const zoom = d3.zoom().scaleExtent([0.2, 2.5]).on("zoom", e => gZoom.attr("transform", e.transform));
+svg.call(zoom).on("dblclick.zoom", null);
+
+function branchColor(d){ return d.depth === 0 ? "#9ec1ff" : palette(d.branch); }
+
+/* ---------- Info axes: Why · Top papers (cite) · Recent findings (recent) · Landscape (impl) ---------- */
+const show = { why:false, refs:false, recent:false, impl:false };
+function nodeHasInfo(d){
+  return (show.why && d.data.why)
+      || (show.refs && d.data.cite && d.data.cite.length)
+      || (show.recent && d.data.recent && d.data.recent.length)
+      || (show.impl && d.data.impl && d.data.impl.length);
+}
+const LINKS = {
+  "OpenAI":"https://openai.com","OpenAI o-series":"https://openai.com","OpenAI function calling":"https://platform.openai.com/docs/guides/function-calling",
+  "Anthropic":"https://www.anthropic.com","Anthropic tool use":"https://docs.claude.com","Claude Code":"https://www.anthropic.com/claude-code","Claude Agent SDK":"https://docs.claude.com","Claude extended thinking":"https://docs.claude.com",
+  "Google Gemini":"https://ai.google.dev","Mistral":"https://mistral.ai","Meta Llama":"https://www.llama.com","DeepSeek":"https://www.deepseek.com","DeepSeek-R1":"https://www.deepseek.com","Qwen":"https://github.com/QwenLM",
+  "LiteLLM":"https://www.litellm.ai","OpenRouter":"https://openrouter.ai","Ollama":"https://ollama.com","vLLM":"https://github.com/vllm-project/vllm","llama.cpp":"https://github.com/ggml-org/llama.cpp","Unsloth":"https://unsloth.ai",
+  "LangChain":"https://www.langchain.com","LangChain / LangGraph":"https://www.langchain.com/langgraph","LangGraph":"https://www.langchain.com/langgraph","LangMem":"https://github.com/langchain-ai/langmem",
+  "LlamaIndex":"https://www.llamaindex.ai","AutoGen":"https://microsoft.github.io/autogen/","CrewAI":"https://www.crewai.com","Semantic Kernel":"https://github.com/microsoft/semantic-kernel","OpenAI Agents SDK":"https://openai.github.io/openai-agents-python/",
+  "Chroma":"https://www.trychroma.com","Weaviate":"https://weaviate.io","Microsoft GraphRAG":"https://github.com/microsoft/graphrag",
+  "Letta (MemGPT)":"https://www.letta.com","Mem0":"https://mem0.ai","Zep":"https://www.getzep.com",
+  "Model Context Protocol":"https://modelcontextprotocol.io","Composio":"https://composio.dev","FastMCP":"https://github.com/jlowin/fastmcp","E2B":"https://e2b.dev",
+  "Outlines":"https://github.com/dottxt-ai/outlines","XGrammar":"https://github.com/mlc-ai/xgrammar","Guidance":"https://github.com/guidance-ai/guidance","Instructor":"https://python.useinstructor.com",
+  "Gorilla":"https://gorilla.cs.berkeley.edu","DSPy":"https://dspy.ai","TextGrad":"https://github.com/zou-group/textgrad",
+  "Ragas":"https://docs.ragas.io","DeepEval":"https://github.com/confident-ai/deepeval","Promptfoo":"https://www.promptfoo.dev","Langfuse":"https://langfuse.com","Arize Phoenix":"https://phoenix.arize.com","Braintrust":"https://www.braintrust.dev",
+  "NeMo Guardrails":"https://github.com/NVIDIA/NeMo-Guardrails","Guardrails AI":"https://www.guardrailsai.com","Llama Guard":"https://github.com/meta-llama/PurpleLlama","Lakera":"https://www.lakera.ai",
+  "Auth0":"https://auth0.com","Keycloak":"https://www.keycloak.org","Open Policy Agent (OPA)":"https://www.openpolicyagent.org","Cedar":"https://www.cedarpolicy.com",
+  "IETF datatracker":"https://datatracker.ietf.org","CATALIST":"https://datatracker.ietf.org/doc/draft-yao-catalist-problem-space-analysis/","AIPREF WG":"https://datatracker.ietf.org/wg/aipref/about/","T2TRG":"https://datatracker.ietf.org/rg/t2trg/about/"
+};
+function chipsHtml(items){
+  return items.map(x => { const u = LINKS[x];
+    return u ? `<a class="chip" href="${u}" target="_blank" rel="noopener">${escapeHtml(x)}</a>` : `<span class="chip">${escapeHtml(x)}</span>`;
+  }).join("");
+}
+function refLinkHtml(id){
+  const r = REFS[id]; if (!r) return "";
+  return `<div class="ref"><a href="${r.url}" target="_blank" rel="noopener">${escapeHtml(r.authors)} (${r.year}) — ${escapeHtml(r.title)}</a><span class="venue">${escapeHtml(r.venue)}</span></div>`;
+}
+function recentHtml(list){
+  return list.map(([id,find]) => { const r = REFS[id]; if (!r) return "";
+    return `<div class="ref"><a href="${r.url}" target="_blank" rel="noopener">${escapeHtml(r.authors)} (${r.year}) — ${escapeHtml(r.title)}</a><span class="find">${escapeHtml(find)}</span></div>`;
+  }).join("");
+}
+function sourcesHtml(cite){
+  return "Top papers: " + cite.map(id => REFS[id]
+    ? `<a href="${REFS[id].url}" target="_blank" rel="noopener">${escapeHtml(REFS[id].short)}</a>` : "")
+    .filter(Boolean).join(" · ");
+}
+
+/* ---------- Tree render ---------- */
+function update(source){
+  const nodes = root.descendants();
+  const links = root.links();
+  tree(root);
+  const t = svg.transition().duration(250);
+
+  const node = gNode.selectAll("g.node").data(nodes, d => d.id);
+  const nodeEnter = node.enter().append("g").attr("class","node")
+    .attr("transform", d => `translate(${source.y0},${source.x0})`)
+    .on("click", (e,d) => { const willExpand = !d.children && d._children; toggle(d); select(d); update(d); if (willExpand) focusNode(d); })
+    .on("dblclick", (e,d) => { e.stopPropagation(); if (d._children || d.children) present(d); })
+    .on("mouseover", (e,d) => { if(!pinned) render(d); });
+  nodeEnter.append("circle").attr("r", 5).attr("fill", d => d._children ? branchColor(d) : "#11141a").attr("stroke", d => branchColor(d));
+  nodeEnter.append("text").attr("dy","0.32em").attr("x", d => d._children ? -10 : 10)
+    .attr("text-anchor", d => d._children ? "end" : "start").text(d => d.data.name);
+
+  const nodeMerge = nodeEnter.merge(node);
+  nodeMerge.transition(t).attr("transform", d => `translate(${d.y},${d.x})`);
+  nodeMerge.select("circle").attr("fill", d => (d._children && !d.children) ? branchColor(d) : "#11141a");
+  nodeMerge.select("text").attr("x", d => d.children || d._children ? -10 : 10).attr("text-anchor", d => d.children || d._children ? "end" : "start");
+  node.exit().transition(t).remove().attr("transform", d => `translate(${source.y},${source.x})`);
+
+  const link = gLink.selectAll("path.link").data(links, d => d.target.id);
+  const linkEnter = link.enter().append("path").attr("class","link").attr("d", () => { const o = {x: source.x0, y: source.y0}; return diagonal({source:o,target:o}); });
+  link.merge(linkEnter).transition(t).attr("d", diagonal);
+  link.exit().transition(t).remove().attr("d", () => { const o = {x: source.x, y: source.y}; return diagonal({source:o,target:o}); });
+
+  root.eachBefore(d => { d.x0 = d.x; d.y0 = d.y; });
+  applySearch(); refreshHighlight(); refreshInfo();
+}
+function focusNode(d){
+  const nodes = d.descendants();
+  const xs = nodes.map(n => n.x), ys = nodes.map(n => n.y);
+  const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
+  const sw = svg.node().clientWidth, sh = svg.node().clientHeight, pad = 80;
+  const needW = (maxY - minY) + dy * 1.3 + pad, needH = (maxX - minX) + pad * 2;
+  const k0 = d3.zoomTransform(svg.node()).k;
+  let scale = Math.min(k0, sw / needW, sh / needH); scale = Math.max(0.25, Math.min(scale, 2.0));
+  const cy = (minY + maxY) / 2, cx = (minX + maxX) / 2;
+  const tx = sw / 2 - scale * cy, ty = sh / 2 - scale * cx;
+  svg.transition().duration(450).call(zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(scale));
+}
+function toggle(d){ if (d.children) { d.children = null; } else { d.children = d._children; } }
+
+/* ---------- Side panel ---------- */
+let pinned = false, selectedId = null;
+const elTerm=document.getElementById("term"), elDef=document.getElementById("def"), elCrumb=document.getElementById("crumb"),
+      elKids=document.getElementById("kids"), elWhy=document.getElementById("why"), elRefs=document.getElementById("refs"),
+      elRecent=document.getElementById("recent"), elImpl=document.getElementById("impl");
+
+function render(d){
+  const color = branchColor(d);
+  elTerm.innerHTML = `<span class="swatch" style="background:${color}"></span>${escapeHtml(d.data.name)}`;
+  elDef.textContent = d.data.def || "—"; elDef.classList.toggle("empty", !d.data.def);
+  elCrumb.textContent = d.ancestors().reverse().slice(0,-1).map(a => a.data.name).join("  ›  ");
+  renderAxes(d);
+  const kids = d._children || d.children;
+  elKids.innerHTML = "";
+  if (kids && kids.length){
+    const pb = document.createElement("button"); pb.className="present-btn"; pb.textContent="▶ Present this page"; pb.onclick=()=>present(d); elKids.appendChild(pb);
+    const h = document.createElement("h2"); h.textContent="Explore"; elKids.appendChild(h);
+    kids.forEach(k => { const b=document.createElement("button"); b.textContent=k.data.name;
+      b.onclick=()=>{ if(!d.children){ d.children=d._children; update(d); focusNode(d);} setSelected(k); }; elKids.appendChild(b); });
+  }
+}
+function renderAxes(d){
+  if (show.why && d.data.why){ elWhy.hidden=false; elWhy.innerHTML=`<h2>Why it matters</h2><p>${escapeHtml(d.data.why)}</p>`; } else { elWhy.hidden=true; elWhy.innerHTML=""; }
+  if (show.refs && d.data.cite && d.data.cite.length){ elRefs.hidden=false; elRefs.innerHTML=`<h2>Top papers</h2>`+d.data.cite.map(refLinkHtml).join(""); } else { elRefs.hidden=true; elRefs.innerHTML=""; }
+  if (show.recent && d.data.recent && d.data.recent.length){ elRecent.hidden=false; elRecent.innerHTML=`<h2>Recent findings (2024–26)</h2>`+recentHtml(d.data.recent); } else { elRecent.hidden=true; elRecent.innerHTML=""; }
+  if (show.impl && d.data.impl && d.data.impl.length){ elImpl.hidden=false; elImpl.innerHTML=`<h2>Tools &amp; frameworks</h2><div class="chips">`+chipsHtml(d.data.impl)+`</div>`; } else { elImpl.hidden=true; elImpl.innerHTML=""; }
+}
+function refreshHighlight(){ gNode.selectAll("g.node").classed("selected", n => n.id === selectedId).select("circle").attr("r", n => n.id === selectedId ? 7.5 : 5); }
+function refreshInfo(){ gNode.selectAll("g.node").classed("hasinfo", d => nodeHasInfo(d)); }
+function select(d){ pinned = true; selectedId = d.id; render(d); refreshHighlight(); }
+function panTo(d){ const sw=svg.node().clientWidth, sh=svg.node().clientHeight, k=d3.zoomTransform(svg.node()).k;
+  const tx=sw*0.32-k*d.y, ty=sh/2-k*d.x; svg.transition().duration(300).call(zoom.transform, d3.zoomIdentity.translate(tx,ty).scale(k)); }
+function setSelected(d){ select(d); panTo(d); }
+function escapeHtml(s){ return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+
+/* ---------- Toggles ---------- */
+const togWhy=document.getElementById("togWhy"), togRefs=document.getElementById("togRefs"),
+      togRecent=document.getElementById("togRecent"), togImpl=document.getElementById("togImpl");
+function onToggle(){
+  show.why=togWhy.checked; show.refs=togRefs.checked; show.recent=togRecent.checked; show.impl=togImpl.checked;
+  const cur = root.descendants().find(n => n.id === selectedId); if (cur) renderAxes(cur);
+  refreshInfo(); if (!slide.hidden) renderSlide();
+}
+[togWhy,togRefs,togRecent,togImpl].forEach(t => t.addEventListener("change", onToggle));
+
+/* ---------- Search ---------- */
+const search=document.getElementById("search"); let query="";
+search.addEventListener("input", () => { query=search.value.trim().toLowerCase();
+  if (query){ root.descendants().forEach(d => { if (d.data.name.toLowerCase().includes(query)) d.ancestors().forEach(a => { if (a._children && !a.children) a.children=a._children; }); }); update(root); }
+  else { applySearch(); } });
+function applySearch(){ gNode.selectAll("g.node").classed("match", d => query && d.data.name.toLowerCase().includes(query)).classed("dim", d => query && !d.data.name.toLowerCase().includes(query)); }
+
+/* ---------- Controls ---------- */
+document.getElementById("expand").onclick = () => { root.each(d => { if (d._children) d.children=d._children; }); update(root); fit(); };
+document.getElementById("collapse").onclick = () => { root.descendants().forEach(d => { if (d.depth>=1){ d._children=d._children||d.children; d.children=null; } }); update(root); fit(); };
+document.getElementById("reset").onclick = () => { search.value=""; query=""; pinned=false; applySearch(); fit(); };
+
+/* ---------- Fit ---------- */
+function fit(){ setTimeout(() => { const b=gZoom.node().getBBox(); const sw=svg.node().clientWidth, sh=svg.node().clientHeight;
+  if (!b.width || !b.height) return; const scale=Math.min(2.2, 0.9/Math.max(b.width/sw, b.height/sh));
+  const tx=sw/2-scale*(b.x+b.width/2), ty=sh/2-scale*(b.y+b.height/2);
+  svg.transition().duration(400).call(zoom.transform, d3.zoomIdentity.translate(tx,ty).scale(scale)); }, 300); }
+
+/* ---------- Present mode ---------- */
+const slide=document.getElementById("slide"), slideTitle=document.getElementById("slideTitle"), slideDef=document.getElementById("slideDef"),
+      slideCrumb=document.getElementById("slideCrumb"), slideGrid=document.getElementById("slideGrid"), slidePos=document.getElementById("slidePos"),
+      slideWhy=document.getElementById("slideWhy"), slideSources=document.getElementById("slideSources"), slideImpl=document.getElementById("slideImpl"),
+      slideRecent=document.getElementById("slideRecent");
+let slideNode=null;
+function present(d){ if (!(d._children || d.children)) return; slideNode=d; renderSlide(); slide.hidden=false; }
+function renderSlide(){
+  const d=slideNode;
+  slideCrumb.textContent = d.ancestors().reverse().map(a => a.data.name).join("  ›  ");
+  slideTitle.innerHTML = `<span class="swatch" style="background:${branchColor(d)}"></span>${escapeHtml(d.data.name)}`;
+  slideDef.textContent = d.data.def || "";
+  slideWhy.textContent = (show.why && d.data.why) ? d.data.why : "";
+  slideSources.innerHTML = (show.refs && d.data.cite && d.data.cite.length) ? sourcesHtml(d.data.cite) : "";
+  slideImpl.innerHTML = (show.impl && d.data.impl && d.data.impl.length) ? chipsHtml(d.data.impl) : "";
+  slideRecent.innerHTML = (show.recent && d.data.recent && d.data.recent.length) ? `<h4>Recent findings (2024–26)</h4>`+recentHtml(d.data.recent) : "";
+  const kids = d._children || d.children || [];
+  slideGrid.innerHTML = "";
+  kids.forEach(k => {
+    const card=document.createElement("div"); card.className="card"; card.style.borderTopColor=branchColor(k);
+    const h=document.createElement("h3"); h.textContent=k.data.name; card.appendChild(h);
+    const p=document.createElement("p"); p.textContent=k.data.def || ""; card.appendChild(p);
+    if (show.why && k.data.why){ const w=document.createElement("p"); w.className="why"; w.textContent=k.data.why; card.appendChild(w); }
+    if (show.refs && k.data.cite && k.data.cite.length){ const s=document.createElement("div"); s.className="sources"; s.innerHTML=sourcesHtml(k.data.cite); card.appendChild(s); }
+    if (show.impl && k.data.impl && k.data.impl.length){ const m=document.createElement("div"); m.className="impl"; m.innerHTML=chipsHtml(k.data.impl); card.appendChild(m); }
+    const gk=k._children || k.children;
+    if (gk && gk.length){ const ul=document.createElement("ul"); ul.className="sub";
+      gk.forEach(g => { const li=document.createElement("li"); li.innerHTML=`<b>${escapeHtml(g.data.name)}</b> — ${escapeHtml(g.data.def || "")}`; ul.appendChild(li); });
+      card.appendChild(ul); card.classList.add("hasKids"); card.title="Open this sub-page"; card.onclick=()=>{ slideNode=k; renderSlide(); }; }
+    slideGrid.appendChild(card);
+  });
+  const parent=d.parent, sibs=parent ? (parent.children || parent._children) : null;
+  slidePos.textContent = (sibs && sibs.length>1) ? `${sibs.indexOf(d)+1} / ${sibs.length}` : "";
+  slide.scrollTop = 0;
+}
+function sib(step){ const d=slideNode, parent=d.parent, sibs=parent ? (parent.children || parent._children) : null;
+  if (!sibs || sibs.length<2) return; const idx=(sibs.indexOf(d)+step+sibs.length)%sibs.length; slideNode=sibs[idx]; renderSlide(); }
+function goUp(){ if (slideNode.parent){ slideNode=slideNode.parent; renderSlide(); } }
+function goInto(){ const kids=(slideNode._children || slideNode.children || []).filter(k => k._children || k.children); if (kids.length){ slideNode=kids[0]; renderSlide(); } }
+function closeSlide(){ slide.hidden=true; }
+document.getElementById("prevSib").onclick=()=>sib(-1);
+document.getElementById("nextSib").onclick=()=>sib(1);
+document.getElementById("upSlide").onclick=goUp;
+document.getElementById("closeSlide").onclick=closeSlide;
+
+/* ---------- Keyboard ---------- */
+function visibleList(){ return root.descendants().slice().sort((a,b) => a.x - b.x); }
+document.addEventListener("keydown", e => {
+  if (!slide.hidden){ if (e.key==="Escape") closeSlide(); else if (e.key==="ArrowLeft") sib(-1); else if (e.key==="ArrowRight") sib(1); else if (e.key==="ArrowUp") goUp(); else if (e.key==="ArrowDown") goInto(); return; }
+  if (document.activeElement === search) return;
+  let cur = root.descendants().find(n => n.id === selectedId) || root;
+  switch (e.key){
+    case "ArrowDown": { e.preventDefault(); const L=visibleList(); const i=L.indexOf(cur); if (i>-1 && i<L.length-1) setSelected(L[i+1]); break; }
+    case "ArrowUp":   { e.preventDefault(); const L=visibleList(); const i=L.indexOf(cur); if (i>0) setSelected(L[i-1]); break; }
+    case "ArrowRight":{ e.preventDefault(); if (cur._children && !cur.children){ cur.children=cur._children; update(cur); setSelected(cur); } else if (cur.children && cur.children.length){ setSelected(cur.children[0]); } break; }
+    case "ArrowLeft": { e.preventDefault(); if (cur.children){ cur.children=null; update(cur); setSelected(cur); } else if (cur.parent){ setSelected(cur.parent); } break; }
+    case "Enter": { e.preventDefault(); if (cur._children || cur.children) present(cur); break; }
+    case "p": { if (cur && (cur._children || cur.children)) present(cur); break; }
+  }
+});
+
+/* ---------- Init ---------- */
+update(root); render(root); selectedId = root.id; refreshHighlight(); pinned = false; fit();
+window.addEventListener("resize", fit);
+</script>
+</body>
+</html>
