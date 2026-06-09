@@ -1,0 +1,749 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>AI Agents — State of the Art &amp; Open Problems (Interactive Map)</title>
+<style>
+  :root {
+    --bg: #0f1115; --panel: #171a21; --ink: #e8eaed; --muted: #9aa3af;
+    --line: #2a2f3a; --accent: #6ea8fe; --why: #d8c79c; --whyline: #b08d3a;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink);
+    font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+  #app { display: grid; grid-template-columns: 1fr 380px; height: 100vh; }
+  #stage { position: relative; overflow: hidden; }
+  svg { width: 100%; height: 100%; display: block; cursor: grab; }
+  svg:active { cursor: grabbing; }
+  .link { fill: none; stroke: var(--line); stroke-width: 1.5px; }
+  .node circle { stroke-width: 2px; cursor: pointer; }
+  .node text { fill: var(--ink); cursor: pointer; paint-order: stroke;
+    stroke: var(--bg); stroke-width: 3px; font-size: 13px; }
+  .node.dim { opacity: 0.18; }
+  .node.match text { fill: #ffe082; font-weight: 700; }
+  .node.selected circle { stroke: #ffe082 !important; }
+  .node.selected text { fill: #ffe082; font-weight: 700; }
+  .node.hasinfo text { text-decoration: underline dotted #ffd54f; text-underline-offset: 3px; }
+  .node.d2hit > circle { stroke: #34d399 !important; stroke-width: 3px; }
+  .node.d2hit text { fill: #6ee7b7; font-weight: 600; }
+  #togD2lab { border-color: #34d399; color: #9ff0c4; }
+
+  /* Side panel */
+  #panel { background: var(--panel); border-left: 1px solid var(--line);
+    padding: 22px 20px; overflow-y: auto; }
+  #panel h1 { font-size: 13px; letter-spacing: .08em; text-transform: uppercase;
+    color: var(--muted); margin: 0 0 4px; font-weight: 600; }
+  #crumb { color: var(--muted); font-size: 12px; margin-bottom: 14px; min-height: 16px; }
+  #term { font-size: 22px; font-weight: 700; margin: 0 0 10px; line-height: 1.25; }
+  #def { font-size: 15px; color: var(--ink); }
+  #def.empty { color: var(--muted); font-style: italic; }
+  #why, #refs, #d2 { margin-top: 16px; }
+  #why[hidden], #refs[hidden], #d2[hidden] { display: none; }
+  #why h2, #refs h2, #d2 h2 { font-size: 11px; letter-spacing: .08em; text-transform: uppercase;
+    color: var(--muted); margin: 0 0 6px; }
+  #why p { margin: 0; font-size: 14px; color: #e7dcc2; background: #221f17;
+    border-left: 3px solid var(--whyline); padding: 9px 11px; border-radius: 4px; }
+  #d2 p { margin: 0; font-size: 14px; color: #c9f7d8; background: #0f2319;
+    border-left: 3px solid #34d399; padding: 9px 11px; border-radius: 4px; }
+  .ref { margin-bottom: 9px; font-size: 12.5px; line-height: 1.35; }
+  .ref a { color: #9ec1ff; text-decoration: none; }
+  .ref a:hover { text-decoration: underline; }
+  .ref .venue { display: block; color: var(--muted); font-size: 11px; }
+  #kids { margin-top: 18px; }
+  #kids h2 { font-size: 11px; letter-spacing: .08em; text-transform: uppercase;
+    color: var(--muted); margin: 0 0 8px; }
+  #kids button { display: block; width: 100%; text-align: left; background: transparent;
+    color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px;
+    margin-bottom: 6px; cursor: pointer; font-size: 13px; }
+  #kids button:hover { border-color: var(--accent); }
+  #kids button.present-btn { background: var(--accent); color: #0b0e13;
+    border-color: var(--accent); font-weight: 700; margin-bottom: 12px; }
+  #kids button.present-btn:hover { filter: brightness(1.08); }
+  .swatch { display: inline-block; width: 14px; height: 14px; border-radius: 3px;
+    margin-right: 10px; vertical-align: middle; }
+
+  /* Toolbar */
+  #bar { position: absolute; top: 12px; left: 12px; display: flex; gap: 8px;
+    align-items: center; flex-wrap: wrap; z-index: 5; }
+  #bar input[type="search"], #bar button { background: var(--panel); color: var(--ink);
+    border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; font-size: 13px; }
+  #bar input[type="search"] { width: 180px; }
+  #bar button { cursor: pointer; }
+  #bar button:hover { border-color: var(--accent); }
+  .tog { display: flex; align-items: center; gap: 5px; color: var(--ink); font-size: 13px;
+    user-select: none; cursor: pointer; background: var(--panel); border: 1px solid var(--line);
+    border-radius: 8px; padding: 6px 10px; }
+  .tog input { cursor: pointer; margin: 0; }
+  #hint { position: absolute; bottom: 10px; left: 12px; color: var(--muted);
+    font-size: 12px; z-index: 5; }
+  @media (max-width: 820px) { #app { grid-template-columns: 1fr; grid-template-rows: 1fr 40vh; }
+    #panel { border-left: none; border-top: 1px solid var(--line); } }
+
+  /* Present (page / slide) overlay */
+  #slide { position: fixed; inset: 0; background: rgba(10,12,16,0.98);
+    z-index: 50; overflow: auto; padding: 56px 48px 48px; }
+  #slide[hidden] { display: none; }
+  #slideInner { max-width: 1140px; margin: 0 auto; }
+  #slideCrumb { color: var(--muted); font-size: 13px; letter-spacing: .04em; margin-bottom: 10px; }
+  #slideTitle { font-size: 34px; margin: 0 0 12px; }
+  #slideDef { font-size: 17px; color: #cdd3db; max-width: 820px; margin: 0 0 14px; }
+  #slideWhy { max-width: 820px; color: var(--why); border-left: 3px solid var(--whyline);
+    padding: 9px 13px; margin: 0 0 16px; font-size: 15px; background: #221f17; border-radius: 4px; }
+  #slideD2 { max-width: 820px; color: #c9f7d8; border-left: 3px solid #34d399;
+    padding: 9px 13px; margin: 0 0 16px; font-size: 15px; background: #0f2319; border-radius: 4px; }
+  #slideSources { color: var(--muted); font-size: 13px; margin: 0 0 24px; }
+  #slideSources a { color: #9ec1ff; text-decoration: none; }
+  #slideSources a:hover { text-decoration: underline; }
+  #slideWhy:empty, #slideD2:empty, #slideSources:empty { display: none; }
+  #slideGrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 16px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-top: 3px solid var(--accent);
+    border-radius: 12px; padding: 16px 18px; }
+  .card.hasKids { cursor: pointer; }
+  .card.hasKids:hover { border-color: var(--accent); }
+  .card h3 { margin: 0 0 6px; font-size: 17px; }
+  .card p { margin: 0; color: #cbd2da; font-size: 14px; }
+  .card .why { margin: 10px 0 0; font-size: 13px; color: var(--why);
+    border-left: 2px solid var(--whyline); padding-left: 9px; }
+  .card .d2 { margin: 10px 0 0; font-size: 13px; color: #9ff0c4;
+    border-left: 2px solid #34d399; padding-left: 9px; }
+  .card .sources { margin-top: 10px; font-size: 12px; color: var(--muted); }
+  .card .sources a { color: #9ec1ff; text-decoration: none; }
+  .card .sources a:hover { text-decoration: underline; }
+  .card ul.sub { margin: 12px 0 0; padding-left: 18px; color: #aeb6c0; font-size: 13px; }
+  .card ul.sub li { margin-bottom: 5px; }
+  .card ul.sub b { color: var(--ink); }
+  #slideNav { position: fixed; top: 16px; right: 24px; display: flex; gap: 8px; align-items: center; z-index: 51; }
+  #slideNav button { background: var(--panel); color: var(--ink); border: 1px solid var(--line);
+    border-radius: 8px; padding: 8px 12px; cursor: pointer; font-size: 13px; }
+  #slideNav button:hover { border-color: var(--accent); }
+  #slidePos { color: var(--muted); font-size: 13px; min-width: 54px; text-align: center; }
+
+  /* Landscape (Axis 2) — products / frameworks */
+  #impl { margin-top: 16px; }
+  #impl[hidden] { display: none; }
+  #impl h2 { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 0 0 6px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip { display: inline-block; background: #1b2330; border: 1px solid var(--line); border-radius: 999px;
+    padding: 3px 9px; font-size: 12px; color: #cdd6e2; white-space: nowrap; text-decoration: none; }
+  a.chip:hover { border-color: var(--accent); color: #fff; }
+  .card .impl { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 5px; }
+  #slideImpl { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 22px; }
+  #slideImpl:empty { display: none; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="stage">
+    <div id="bar">
+      <input id="search" type="search" placeholder="Search concepts…" />
+      <button id="expand">Expand all</button>
+      <button id="collapse">Collapse</button>
+      <button id="reset">Reset view</button>
+      <label class="tog"><input type="checkbox" id="togWhy" /> Systems lens</label>
+      <label class="tog"><input type="checkbox" id="togRefs" /> Key refs</label>
+      <label class="tog"><input type="checkbox" id="togImpl" /> Status</label>
+      <label class="tog" id="togD2lab"><input type="checkbox" id="togD2" /> ⬢ D2 relevance</label>
+    </div>
+    <svg></svg>
+    <div id="hint">↑↓ move · → expand/in · ← collapse/out · Enter present · click to pin · toggle Systems lens / Key refs / Status / ⬢ D2 relevance above · snapshot mid-2026 (verify refs before citing)</div>
+  </div>
+  <div id="panel">
+    <h1>Open problem</h1>
+    <div id="crumb"></div>
+    <div id="term">AI Agents — Open Problems</div>
+    <div id="def" class="empty">Hover, click, or use arrow keys on any node. Toggle <b>Systems lens</b>, <b>Key refs</b>, and <b>Status</b> in the top bar.</div>
+    <div id="d2" hidden></div>
+    <div id="why" hidden></div>
+    <div id="refs" hidden></div>
+    <div id="impl" hidden></div>
+    <div id="kids"></div>
+  </div>
+</div>
+
+<div id="slide" hidden>
+  <div id="slideNav">
+    <button id="prevSib">‹ Prev</button>
+    <span id="slidePos"></span>
+    <button id="nextSib">Next ›</button>
+    <button id="upSlide">↑ Up</button>
+    <button id="closeSlide">Close ✕</button>
+  </div>
+  <div id="slideInner">
+    <div id="slideCrumb"></div>
+    <h2 id="slideTitle"></h2>
+    <p id="slideDef"></p>
+    <div id="slideD2"></div>
+    <div id="slideWhy"></div>
+    <div id="slideSources"></div>
+    <div id="slideImpl"></div>
+    <div id="slideGrid"></div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+<script>
+/* ===========================================================================
+   Bibliography — shared, keyed by id. Nodes cite entries via `cite: ["id"]`.
+   Mirrored in decks/references.md. All entries verified against arXiv/source.
+   =========================================================================== */
+const REFS = {
+  memsurvey:   { short: "Memory survey (Du 2026)", authors: "Du", year: 2026, title: "Memory for Autonomous LLM Agents: Mechanisms, Evaluation, and Emerging Frontiers", venue: "arXiv:2603.07670", url: "https://arxiv.org/abs/2603.07670" },
+  memagentbench:{ short: "MemoryAgentBench (2026)", authors: "—", year: 2026, title: "Evaluating Memory in LLM Agents via Incremental Multi-Turn Tasks", venue: "OpenReview 2026", url: "https://openreview.net/forum?id=DT7JyQC3MR" },
+  memagent:    { short: "MemAgent (2026)", authors: "—", year: 2026, title: "MemAgent: Reshaping Long-Context LLM with Multi-Conv RL-based Memory Agent", venue: "OpenReview 2026", url: "https://openreview.net/forum?id=k5nIOvYGCL" },
+  reme:        { short: "ReMe (2025)", authors: "—", year: 2025, title: "Remember Me, Refine Me: A Dynamic Procedural Memory Framework", venue: "arXiv:2512.10696", url: "https://arxiv.org/abs/2512.10696" },
+  maca:        { short: "Multi-Agent Memory / CompArch (2026)", authors: "—", year: 2026, title: "Multi-Agent Memory from a Computer Architecture Perspective: Visions and Challenges Ahead", venue: "SIGARCH / arXiv:2603.10062", url: "https://arxiv.org/abs/2603.10062" },
+  intrinsicmem:{ short: "Intrinsic Memory Agents (2025)", authors: "—", year: 2025, title: "Intrinsic Memory Agents: Heterogeneous Multi-Agent LLM Systems", venue: "arXiv:2508.08997", url: "https://arxiv.org/abs/2508.08997" },
+  tokencoherence:{ short: "Token Coherence / MESI (Parakhin 2026)", authors: "Parakhin", year: 2026, title: "Token Coherence: Adapting MESI Cache Protocols to Minimize Synchronization Overhead in Multi-Agent LLM Systems", venue: "arXiv:2603.15183", url: "https://arxiv.org/abs/2603.15183" },
+  kvcomm:      { short: "KVCOMM (Ye 2025)", authors: "Ye et al.", year: 2025, title: "KVCOMM: Online Cross-context KV-cache Communication for Efficient Multi-agent LLM Inference", venue: "NeurIPS 2025", url: "https://openreview.net/forum?id=yGOytgjurF" },
+  collectivekv:{ short: "Collective KV Sharing (2026)", authors: "—", year: 2026, title: "Scaling Multi-Agent LLM Serving via Collective KV Cache Sharing", venue: "arXiv:2604.03143", url: "https://arxiv.org/abs/2604.03143" },
+  persistentkv:{ short: "Persistent Q4 KV / edge (2026)", authors: "—", year: 2026, title: "Agent Memory Below the Prompt: Persistent Q4 KV Cache for Multi-Agent LLM Inference on Edge Devices", venue: "arXiv:2603.04428", url: "https://arxiv.org/abs/2603.04428" },
+  crdtmcp:     { short: "MCP + CRDTs (2026)", authors: "—", year: 2026, title: "Giving AI Agents Permanent Memory with MCP and CRDTs", venue: "Hackernoon (industry)", url: "https://hackernoon.com/giving-ai-agents-permanent-memory-with-mcp-and-crdts" },
+  gradientsys: { short: "Gradientsys (2025)", authors: "—", year: 2025, title: "Gradientsys: A Multi-Agent LLM Scheduler with ReAct Orchestration", venue: "arXiv:2507.06520", url: "https://arxiv.org/abs/2507.06520" },
+  asynclm:     { short: "AsyncLM (Gim 2024)", authors: "Gim, Lee, Zhong", year: 2024, title: "Asynchronous LLM Function Calling", venue: "arXiv:2412.07017", url: "https://arxiv.org/abs/2412.07017" },
+  asyncfc:     { short: "AsyncFC (2026)", authors: "—", year: 2026, title: "Concurrency without Model Changes: Future-based Asynchronous Function Calling for LLMs", venue: "arXiv:2605.15077", url: "https://arxiv.org/abs/2605.15077" },
+  mirrorconsistency:{ short: "Mirror-Consistency (2024)", authors: "—", year: 2024, title: "Mirror-Consistency: Harnessing Inconsistency in Majority Voting", venue: "arXiv:2410.10857", url: "https://arxiv.org/abs/2410.10857" },
+  core:        { short: "CoRE ensemble (2026)", authors: "—", year: 2026, title: "Harnessing Consistency for Robust Test-Time LLM Ensemble", venue: "arXiv:2510.13855", url: "https://arxiv.org/abs/2510.13855" },
+  sixsigma:    { short: "Six Sigma Agent (2026)", authors: "—", year: 2026, title: "The Six Sigma Agent: Achieving Enterprise-Grade Reliability in LLM Agents", venue: "arXiv:2601.22290", url: "https://arxiv.org/abs/2601.22290" },
+  thoughtics:  { short: "Thought-ICS / backtracking (2026)", authors: "—", year: 2026, title: "Iterative Correction Sampling of Thoughts: Structure Enables Effective Self-Localization of Errors", venue: "arXiv:2602.02416", url: "https://arxiv.org/abs/2602.02416" },
+  selfnotes:   { short: "Self-Notes (Lanchantin 2023)", authors: "Lanchantin et al.", year: 2023, title: "Learning to Reason and Memorize with Self-Notes", venue: "arXiv:2305.00833", url: "https://arxiv.org/abs/2305.00833" },
+  lattice:     { short: "LATTICE retrieval (2025)", authors: "—", year: 2025, title: "LATTICE: LLM-guided Hierarchical Retrieval", venue: "arXiv:2510.13217", url: "https://arxiv.org/abs/2510.13217" },
+  procmem:     { short: "Skills as procedural memory (2026)", authors: "—", year: 2026, title: "Agent Skills from the Perspective of Procedural Memory", venue: "TechRxiv 2026", url: "https://www.techrxiv.org/doi/pdf/10.36227/techrxiv.176857932.25697838" },
+  memp:        { short: "Mem^p procedural memory (2025)", authors: "—", year: 2025, title: "Mem^p: Exploring Agent Procedural Memory", venue: "arXiv:2508.06433", url: "https://arxiv.org/abs/2508.06433" },
+  agentmaster: { short: "AgentMaster A2A+MCP (Liao 2025)", authors: "Liao et al.", year: 2025, title: "AgentMaster: A Multi-Agent Conversational Framework Using A2A and MCP Protocols", venue: "EMNLP 2025 demos / arXiv:2507.21105", url: "https://arxiv.org/abs/2507.21105" },
+  mcpmas:      { short: "MAS via MCP (2025)", authors: "—", year: 2025, title: "Advancing Multi-Agent Systems Through Model Context Protocol", venue: "arXiv:2504.21030", url: "https://arxiv.org/abs/2504.21030" },
+  mcp:         { short: "MCP (Anthropic 2024)", authors: "Anthropic", year: 2024, title: "Introducing the Model Context Protocol", venue: "modelcontextprotocol.io", url: "https://modelcontextprotocol.io" },
+  cir3:        { short: "CIR3 collaborative QA (2025)", authors: "—", year: 2025, title: "Coordinated LLM Multi-Agent Systems for Collaborative Question Answering (CIR3)", venue: "Knowledge-Based Systems 2025", url: "https://www.sciencedirect.com/science/article/pii/S0950705125016661" },
+  secpatterns: { short: "Securing LLM agents (2025)", authors: "—", year: 2025, title: "Design Patterns for Securing LLM Agents against Prompt Injections", venue: "arXiv:2506.08837", url: "https://arxiv.org/abs/2506.08837" },
+  greshake:    { short: "Indirect Prompt Injection (Greshake 2023)", authors: "Greshake et al.", year: 2023, title: "Not What You've Signed Up For: Compromising Real-World LLM-Integrated Applications with Indirect Prompt Injection", venue: "AISec 2023", url: "https://arxiv.org/abs/2302.12173" },
+  evalsurvey:  { short: "Agent eval survey (2025)", authors: "—", year: 2025, title: "Evaluation and Benchmarking of LLM Agents: A Survey", venue: "arXiv:2507.21504", url: "https://arxiv.org/abs/2507.21504" },
+  mobilebench: { short: "Mobile-Bench (2024)", authors: "—", year: 2024, title: "Mobile-Bench: An Evaluation Benchmark for LLM-based Mobile Agents", venue: "arXiv:2407.00993", url: "https://arxiv.org/abs/2407.00993" },
+  topclass:    { short: "TOP OF THE CLASS (2026)", authors: "—", year: 2026, title: "Top of the Class: Benchmarking LLM Agents on Cost, Latency, Accuracy, Stability, Security", venue: "OpenReview", url: "https://openreview.net/pdf?id=RQjUpeINII" },
+  mast:        { short: "MAST / why MAS fail (Cemri 2025)", authors: "Cemri et al.", year: 2025, title: "Why Do Multi-Agent LLM Systems Fail? (MAST failure taxonomy)", venue: "arXiv (verify citation)", url: "https://arxiv.org/abs/2503.13657" },
+  batchinvariant:{ short: "Batch-invariant determinism (He 2025)", authors: "He et al. (Thinking Machines Lab)", year: 2025, title: "Defeating Nondeterminism in LLM Inference", venue: "Thinking Machines Lab + batch-invariant-ops", url: "https://github.com/thinking-machines-lab/batch-invariant-ops" },
+  llm42:       { short: "LLM-42 determinism (2026)", authors: "Gond, Kamath, Ramjee, Panwar", year: 2026, title: "LLM-42: Enabling Determinism in LLM Inference with Verified Speculation", venue: "arXiv:2601.17768", url: "https://arxiv.org/abs/2601.17768" },
+  microserve:  { short: "MicroServe (2024)", authors: "—", year: 2024, title: "A System for Microserving of LLMs", venue: "arXiv:2412.12488", url: "https://arxiv.org/abs/2412.12488" },
+  serverlessllm:{ short: "ServerlessLLM (2024)", authors: "—", year: 2024, title: "ServerlessLLM: Low-Latency Serverless Inference for Large Language Models", venue: "arXiv:2401.14351", url: "https://arxiv.org/abs/2401.14351" },
+  ietf_catalist:{ short: "IETF CATALIST — A2A drafts (2026)", authors: "IETF (Yao, Eckert, Du)", year: 2026, title: "CATALIST: agent-to-agent communication — problem space, ACIP framework, routing", venue: "I-Ds (datatracker)", url: "https://datatracker.ietf.org/doc/draft-yao-catalist-problem-space-analysis/" },
+  ietf_agentproto:{ short: "IETF agentproto BoF (2026)", authors: "Krishnan et al.", year: 2026, title: "Agent Communication Protocols (BoF request)", venue: "IETF BoF request", url: "https://datatracker.ietf.org/doc/bofreq-krishnan-agent-communication-protocols/" },
+  ietf_dawn:{ short: "IETF dawn list (discovery)", authors: "IETF", year: 2026, title: "dawn — discovery of agents/tools/endpoints", venue: "IETF mailing list", url: "https://mailarchive.ietf.org/arch/browse/dawn/" },
+  ietf_audit:{ short: "IETF AUDIT BoF (2026)", authors: "Kuhlewind et al.", year: 2026, title: "Agent Use of Delegation and Interaction Traceability (AUDIT, BoF request)", venue: "IETF BoF request", url: "https://datatracker.ietf.org/doc/bofreq-kuhlewind-agent-use-of-delegation-and-interaction-traceability-audit/" },
+  ietf_aipref:{ short: "IETF AIPREF WG (2026)", authors: "IETF AIPREF WG", year: 2026, title: "AI usage preferences (vocab, attach, exclusions, ...)", venue: "IETF Working Group", url: "https://datatracker.ietf.org/wg/aipref/about/" },
+  ietf_iotagent:{ short: "IETF t2trg iot-agent (2026)", authors: "Jimenez", year: 2026, title: "AI agents for IoT over CoAP + hypermedia", venue: "I-D (T2TRG)", url: "https://datatracker.ietf.org/doc/draft-jimenez-t2trg-iot-agent/" }
+};
+
+/* ===========================================================================
+   Concept data: layered model.
+   Node fields: { name, def, why?, cite?[], impl?[ (reserved: Axis 2) ], children? }
+   =========================================================================== */
+const DATA = {
+  name: "AI Agents — Open Problems",
+  d2: "D2 lens — highlights problems matching Networks / Telecom / Services: protocols & standardization (IETF/ISO), IoT & edge under constraint, evaluation & QoE, security, and where D2 theory (optimization, game theory, stochastic modeling, graph theory) applies.",
+  def: "A state-of-the-art map of LLM-agent architectures as 11 research branches of open problems — unified by one lens: classical CS primitives re-derived for a probabilistic, natural-language core, and where each one breaks.",
+  why: "Recurring meta-finding: almost everything is measured for cost / latency / throughput, and almost nothing for correctness / semantic soundness. That gap is where the decisive experiments live.",
+  impl: ["Snapshot mid-2026", "11 branches · 33 problems"],
+  children: [
+
+    { name: "★ The unifying lens — classical CS, re-derived", def: "The thread running through every branch: the agent stack is being rebuilt out of OS / computer-architecture / distributed-systems primitives — but each breaks because the executor is a probabilistic, natural-language core where code and data share one channel.",
+      why: "Three reasons everything breaks: (1) code and data share one channel (Von Neumann blurring → prompt injection); (2) reads are semantic and approximate, so identical state yields different inferences; (3) failures are correlated (shared pretraining), so redundancy does not cancel error.",
+      impl: ["Cross-cutting"], children: [
+      { name: "Virtual memory / paging", def: "Agent instantiation: retrieval-augmented & hierarchical memory; KV-cache paged between RAM and disk.", why: "Classical analogue — uniform address space, deterministic page mapping. Where it breaks — addresses are semantic embeddings, mapping is approximate, identical context can yield different reads.", impl: ["Cross-cutting"], cite: ["memsurvey","persistentkv"] },
+      { name: "Cache coherence (MESI)", def: "Agent instantiation: artifact / KV invalidation across agents (Token Coherence, KVCOMM).", why: "Classical analogue — bit-level coherence makes a CPU deterministic. Where it breaks — coherence is not bit-level; different readers infer contradictory semantics from the same slice.", impl: ["Cross-cutting"], cite: ["tokencoherence","kvcomm"] },
+      { name: "Consistency models", d2: "MEDIUM — distributed shared state and consistency across nodes.", def: "Agent instantiation: eventual / strong consistency over shared semantic stores.", why: "Classical analogue — defined over register operations with clear visibility. Where it breaks — writes are NL with implicit schemas; reads reinterpret conflicts instead of detecting them.", impl: ["Cross-cutting"], cite: ["maca"] },
+      { name: "Futures & async", def: "Agent instantiation: tool-call placeholders; async function calling (AsyncLM / AsyncFC).", why: "Classical analogue — promises + hardware interrupts, precise and deterministic. Where it breaks — the scheduler delegates dependency-tracking to the LLM, which forgets pending futures.", impl: ["Cross-cutting"], cite: ["asynclm","asyncfc"] },
+      { name: "Speculative execution + rollback", def: "Agent instantiation: multi-sample plans; backtracking reasoning (Thought-ICS).", why: "Classical analogue — reorder buffers; speculative writes never commit until resolved. Where it breaks — discarded branches still leak into memory and future reasoning.", impl: ["Cross-cutting"], cite: ["thoughtics"] },
+      { name: "IPC & protocols", d2: "STRONG — protocol design + standardization (IETF/ISO) is D2's core; MCP/A2A are protocols to specify and evolve, not redefine.", def: "Agent instantiation: MCP servers + agent-to-agent (A2A) handoff schemas.", why: "Classical analogue — typed RPC contracts that fail fast. Where it breaks — messages are free-form NL; agents mis-parse contracts and fail open, not closed.", impl: ["Cross-cutting"], cite: ["mcp","agentmaster","ietf_catalist","ietf_dawn"] },
+      { name: "Process isolation & capabilities", def: "Agent instantiation: tool sandboxes, per-resource capabilities.", why: "Classical analogue — unforgeable references, syscalls, hardware boundaries. Where it breaks — instruction and data share one channel; prompt injection rewrites the system prompt at test time.", impl: ["Cross-cutting"], cite: ["secpatterns","greshake"] },
+      { name: "OS scheduling & multi-core", d2: "MEDIUM — scheduling, fairness and QoS via optimization and game theory.", def: "Agent instantiation: multi-agent planners, concurrent agents, KV-sharing.", why: "Classical analogue — fairness & deadlock-freedom with estimable workloads. Where it breaks — behavior is non-deterministic; small prompt changes reorder tool calls, breaking reproducibility.", impl: ["Cross-cutting"], cite: ["gradientsys"] },
+      { name: "Fault tolerance / N-version", def: "Agent instantiation: self-consistency, voting ensembles (Six Sigma Agent).", why: "Classical analogue — N-version programming assumes independent failures. Where it breaks — LLM errors are correlated via shared training; redundancy reinforces a shared bias.", impl: ["Cross-cutting"], cite: ["mirrorconsistency","sixsigma"] },
+      { name: "Statelessness & determinism", d2: "MEDIUM — service architecture; stateless core + REST/edge serving.", def: "Agent instantiation: stateless inference core + externalized state; the forward pass is deterministic in principle.", why: "Classical analogue — a pure, idempotent function / stateless REST resource. Where it breaks — nondeterminism leaks in at the serving layer (batch composition), and externalized state is re-injected ad hoc, not as an addressable resource graph.", impl: ["Cross-cutting"], cite: ["batchinvariant","serverlessllm"] }
+    ]},
+
+    { name: "1 · Context & memory management", def: "Targeted retrieval + structured memory beat naive long context — but there are no principled interfaces or correctness guarantees.", children: [
+      { name: "1.1 Formal semantics for virtual context", def: "Define correctness for an addressable, hierarchical agent memory with approximate semantic retrieval.", why: "Classical analogue — virtual memory with deterministic load/store. Where it breaks — semantic addresses, approximate mapping, probabilistic reader; correctness only definable at task level.", impl: ["Open","★★★ ripe","Top-10","Measured: cost/QA","Unmeasured: context soundness"], cite: ["memsurvey","memagent","memagentbench"] },
+      { name: "1.2 Context rot & consolidation at scale", def: "Quantify and mitigate fidelity loss in long-lived memories under repeated summarization and selective forgetting.", why: "Classical analogue — log-structured FS / GC compaction is lossless by spec. Where it breaks — summarization is a lossy probabilistic transform; no checksum for meaning.", impl: ["Open","★★ ripe","Unmeasured: semantic preservation across k compressions"], cite: ["memsurvey","reme"] },
+      { name: "1.3 Editable, self-modifying context (with safety)", def: "Let agents edit their own long-term context (skills, policies, preferences) while preserving invariants like safety and identity.", why: "Classical analogue — self-modifying code constrained by types & module boundaries. Where it breaks — the same LLM writes and reads its own NL code; no static check; code/data fully blurred.", impl: ["Open","★ ripe","Unmeasured: identity drift / invariant violations"], cite: ["memsurvey","reme"] }
+    ]},
+
+    { name: "2 · Multi-agent shared state & coherence", d2: "MEDIUM — distributed shared state and consistency across nodes.", def: "Multi-agent memory is being framed as a computer-architecture problem — but there is no standard model of coherence or staleness over semantic shared state.", children: [
+      { name: "2.1 Consistency models for semantic shared memory", def: "Define & validate consistency models that account for both storage-level updates and probabilistic reader interpretation.", why: "Classical analogue — sequential/causal/eventual consistency over registers. Where it breaks — the value is a narrative; reads synthesize/reinterpret; different prompts give different views of the same write history.", impl: ["Open","★★ ripe","Top-10","Unmeasured: cross-agent semantic agreement"], cite: ["maca","intrinsicmem","tokencoherence"] },
+      { name: "2.2 Probabilistic-reader error floor for coherence", d2: "MEDIUM — stochastic modeling of correlated error and saturation.", def: "Is there a floor where model misinterpretation dominates storage staleness, so tighter coherence stops improving correctness?", why: "Classical analogue — perfect HW coherence makes the CPU deterministic. Where it breaks — even perfect coherence leaves a probabilistic reader that misconstrues or ignores updates.", impl: ["Open","★★★ ripe","Top-10","Measured: reuse/speedup","Unmeasured: semantic agreement"], cite: ["kvcomm","collectivekv","tokencoherence"] },
+      { name: "2.3 CRDT-like semantics for NL shared state", def: "Conflict-free replicated merge for natural-language, LLM-mediated concurrent memory.", why: "Classical analogue — CRDTs use algebraic, associative/commutative merges. Where it breaks — NL updates do not compose commutatively; merging paragraphs yields contradictions.", impl: ["Open","★ ripe","Unmeasured: concurrent-write semantics"], cite: ["crdtmcp","maca"] }
+    ]},
+
+    { name: "3 · Concurrency & control flow", def: "Frameworks support parallel tool calls and planner-worker patterns, but scheduling is heuristic and often delegated to the LLM itself.", children: [
+      { name: "3.1 Deterministic vs LLM-driven schedulers", def: "Characterize when LLM-controlled scheduling is safe, and design hybrids combining deterministic safety with LLM flexibility.", why: "Classical analogue — OS scheduler with well-defined deps and deadlock-freedom. Where it breaks — deps are NL the LLM may invent or forget; the same plan is interpreted differently across runs.", impl: ["Open","★★★ ripe","Unmeasured: reproducibility / dependency violations"], cite: ["gradientsys","asyncfc"] },
+      { name: "3.2 Futures, interrupts & cancellation semantics", def: "Robust abstractions for futures, interrupts, and cancellation when the executor may ignore control signals.", why: "Classical analogue — promises + hardware interrupts are precise. Where it breaks — the model mentally commits via CoT; cancelled work leaks into later outputs (ghost futures).", impl: ["Open","★★ ripe","Unmeasured: interrupt adherence / leakage"], cite: ["asynclm","asyncfc"] },
+      { name: "3.3 Multi-core orchestration & fairness", d2: "MEDIUM — scheduling, fairness/QoS, resource allocation; optimization and game theory.", def: "Scheduling policies and metrics balancing throughput, latency, and fairness when both tasks and workers are stochastic.", why: "Classical analogue — multiprocessor scheduling with estimable workloads. Where it breaks — per-agent runtime is highly variable; tokens-to-useful-work is noisy.", impl: ["Open","★ ripe","Measured: speedup","Unmeasured: fairness"], cite: ["collectivekv","kvcomm"] }
+    ]},
+
+    { name: "4 · Reliability of the probabilistic core", def: "Decoding tricks, ensembles, and self-correction help — but the general conditions under which redundancy improves vs degrades reliability are unknown.", children: [
+      { name: "4.1 When does redundancy actually reduce error?", d2: "MEDIUM — stochastic modeling of correlated failures; correlation structure.", def: "Identify task / correlation / model-family conditions under which voting and ensembles provably beat a single model.", why: "Classical analogue — TMR / N-version programming assumes independent failures. Where it breaks — LLM failures are correlated; more samples can reinforce a shared bias instead of cancelling it.", impl: ["Open","★★★ ripe","Top-10","Unmeasured: error correlation / diminishing returns"], cite: ["mirrorconsistency","core","sixsigma"] },
+      { name: "4.2 Self-correction vs self-damage", def: "Determine when reflection / critique improves performance vs introduces new errors.", why: "Classical analogue — fault tolerance uses independent monitors. Where it breaks — the same model is generator AND critic, so errors feed on each other.", impl: ["Open","★★ ripe","Top-10","Unmeasured: per-step corrections vs regressions"], cite: ["thoughtics","mirrorconsistency","sixsigma"] },
+      { name: "4.3 Speculative execution & rollback", def: "Speculate for latency/quality without contaminating persistent state with discarded branches.", why: "Classical analogue — out-of-order execution with precise exceptions; no speculative commit. Where it breaks — speculative notes are read later even if the branch is pruned; no HW-enforced isolation.", impl: ["Open","★ ripe","Unmeasured: speculative-branch contamination"], cite: ["thoughtics","mirrorconsistency"] }
+    ]},
+
+    { name: "5 · Reasoning & metacognition", def: "Agents add reflection, uncertainty, and skill memory — but it is unclear how much is genuine metacognition vs learned pattern matching.", children: [
+      { name: "5.1 Knowing when context is insufficient", def: "Detect context insufficiency (vs general uncertainty) and act conservatively — ask for more, or abstain.", why: "Classical analogue — preconditions / type checks detect missing inputs. Where it breaks — no explicit precondition check; reasoning is folded into one generative process, so blind spots go unseen.", impl: ["Open","★★ ripe","Unmeasured: missing-context vs misreasoning errors"], cite: ["memagentbench","evalsurvey"] },
+      { name: "5.2 Genuine introspection vs learned shortcuts", def: "Does chain-of-thought / reflection reflect real reasoning, or post-hoc pattern matching?", why: "Classical analogue — debug logs / proof traces faithfully mirror execution. Where it breaks — CoT is generated by the same core; it may be rationalization, not the actual computation.", impl: ["Contested","★ ripe","Unmeasured: CoT counterfactual sensitivity"], cite: ["procmem","mirrorconsistency"] },
+      { name: "5.3 Procedural-skill memory as a first-class abstraction", def: "Formalize and evaluate persistent, reusable skills separately from declarative memory.", why: "Classical analogue — libraries / subroutines with stable signatures. Where it breaks — skills are fuzzy, overlapping, LLM-selected; no backward compatibility as they evolve.", impl: ["Open","★★★ ripe","Top-10","Unmeasured: skill drift / interference"], cite: ["procmem","memp","reme"] }
+    ]},
+
+    { name: "6 · Multi-agent communication & coordination", d2: "STRONG — agent communication = protocol design and coordination; D2's wheelhouse (ADOPNET; IETF/ISO).", def: "MCP and A2A define channels, but handoffs, capability passing, and conflict resolution run on NL convention, not typed interfaces.", cite: ["ietf_catalist","ietf_agentproto","ietf_dawn"], children: [
+      { name: "6.1 Typed handoff semantics for A2A", d2: "STRONG — typed handoff/calling conventions = protocol specification + interop testing; an IETF/ISO-style contribution.", def: "Design typed handoff / calling conventions for agent messages that survive passage through an LLM.", why: "Classical analogue — RPC with typed schemas that fail fast. Where it breaks — caller and callee reinterpret types as NL; errors are subtle misalignments, not crashes.", impl: ["Open","★★★ ripe","Measured: task score","Unmeasured: contract-violation rate"], cite: ["agentmaster","mcpmas","mcp","ietf_catalist","ietf_agentproto"] },
+      { name: "6.2 Capability passing & dynamic role assignment", d2: "MEDIUM — delegation and authorization across agents; networked trust.", def: "Safe, composable capability delegation and role assignment under adversarial or noisy conditions.", why: "Classical analogue — object-capability systems with unforgeable refs. Where it breaks — capabilities are described in NL and passed in context; an adversarial message can suggest unauthorized ones.", impl: ["Open","★★ ripe","Unmeasured: capability misuse / escalation"], cite: ["mcpmas","secpatterns"] },
+      { name: "6.3 Semantic conflict resolution between agents", d2: "MEDIUM — coordination and negotiation; game theory.", def: "Detect and resolve semantic (not write-write) conflicts between agents with differing beliefs or goals.", why: "Classical analogue — distributed-DB conflicts at the record/transaction level. Where it breaks — conflict is semantic: inconsistent narratives needing negotiation, not mechanical rules.", impl: ["Open","★ ripe","Unmeasured: intermediate conflicts / resolution quality"], cite: ["cir3","agentmaster"] }
+    ]},
+
+    { name: "7 · Safety & security as architecture", d2: "STRONG — agent security as a networked attack surface (SOTERN).", def: "Tool-using agents are highly exposed to injection and exfiltration; practical patterns exist, but principled architectural models do not.", cite: ["ietf_audit","ietf_aipref"], children: [
+      { name: "7.1 Instruction/data separation in prompt channels", d2: "STRONG — security architecture; agents as a new attack surface (SOTERN).", def: "Architect prompt/tool interfaces that separate instructions from data, mitigating the Von Neumann vulnerability.", why: "Classical analogue — Harvard/Von Neumann separates code from data; data cannot modify instructions. Where it breaks — instructions and data are both tokens in one stream; malicious input rewrites prior instructions.", impl: ["Open","★★★ ripe","Top-10","OWASP #1 LLM risk"], cite: ["secpatterns","greshake"] },
+      { name: "7.2 Provenance & tagged context", d2: "MEDIUM — information-flow and privacy/data-residency governance.", def: "Inspectable provenance / tagging so downstream decisions respect trust, privacy, and origin.", why: "Classical analogue — taint tracking / information-flow control with labels and propagation policy. Where it breaks — taints are lost through NL transforms; the model freely rephrases and aggregates.", impl: ["Open","★★ ripe","Unmeasured: tag-loss rate / flow violations"], cite: ["secpatterns","memsurvey"] },
+      { name: "7.3 Capability isolation & sandboxing", d2: "MEDIUM — isolation for networked tools and agents.", def: "Enforceable isolation for tools and sub-agents that survives the flexibility of NL interfaces.", why: "Classical analogue — process isolation via syscalls, virtualization, resource boundaries. Where it breaks — agents can be told in NL to route data across privilege boundaries; isolation must act on semantics.", impl: ["Open","★ ripe","Mostly anecdotal red-team evidence"], cite: ["secpatterns","greshake"] }
+    ]},
+
+    { name: "8 · Evaluation & failure analysis", d2: "STRONG — D2's core activity: evaluating metrics, solutions, architectures; QoE = user satisfaction.", def: "Benchmarks have exploded, but the landscape is fragmented and mostly measures cost/throughput rather than failure modes or reproducibility.", children: [
+      { name: "8.1 Standardized failure taxonomies & logging", d2: "MEDIUM — measurement standardization (cf. IETF/ISO practice).", def: "Adopt shared failure taxonomies and trace schemas to enable cross-system comparison.", why: "Classical analogue — software engineering has standard bug taxonomies and reproducible failures. Where it breaks — agent failures are stochastic and fuzzy (is a hallucination a memory, reasoning, or safety failure?).", impl: ["Open","★ ripe","Needs community coordination"], cite: ["evalsurvey","mast","mobilebench"] },
+      { name: "8.2 Reproducibility & variance in evaluations", d2: "STRONG — measurement methodology and statistics; D2 evaluates stochastic systems.", def: "Quantify and control evaluation variance from stochasticity; define reproducible protocols.", why: "Classical analogue — SPEC-style benchmarks are deterministic; variance is hardware noise. Where it breaks — agents are inherently stochastic, so single-run metrics are non-reproducible.", impl: ["Open","★★ ripe","Unmeasured: CIs / seed counts rarely reported"], cite: ["evalsurvey","mobilebench"] },
+      { name: "8.3 Measuring process correctness, not just outcomes", d2: "STRONG — process/QoE metrics beyond end-to-end success.", def: "Metrics for plan, tool-use, and intermediate-state correctness — not only final answers.", why: "Classical analogue — program verification / static analysis check intermediate invariants. Where it breaks — CoT and tool traces are opaque and hard to evaluate automatically.", impl: ["Open","★★★ ripe","Top-10"], cite: ["mobilebench","topclass","evalsurvey"] }
+    ]},
+
+    { name: "9 · Efficiency & deployment", d2: "STRONG — edge/on-device under constraint (IoT/ITS), cost and resource modeling.", def: "KV-cache sharing, offloading, and edge agents advance fast — but designs optimize speed without exploring correctness trade-offs.", children: [
+      { name: "9.1 KV-cache sharing vs correctness trade-offs", def: "How does KV reuse across agents and sessions affect correctness, bias, and privacy — not just speed?", why: "Classical analogue — CPU caches hold derived state always consistent with memory, transparent to software. Where it breaks — KV caches encode latent beliefs; reuse may transfer hidden bias, hallucination, or PII.", impl: ["Open","★★★ ripe","Top-10","Measured: latency/throughput","Unmeasured: bias / leakage"], cite: ["kvcomm","collectivekv","persistentkv"] },
+      { name: "9.2 Edge & on-device agents under constraints", d2: "STRONG — IoT/ITS, constrained, mobile and volatile networks, MEC; the most on-target problem (OCIF, E4SE).", def: "Maintain reliability and safety under tight compute, memory, and connectivity (edge / MEC).", why: "Classical analogue — embedded engineering uses static provisioning and compile-time analysis. Where it breaks — agent workloads spike unpredictably; context and tool use are hard to bound.", impl: ["Open","★ ripe","Unmeasured: graceful degradation under resource caps"], cite: ["persistentkv","mobilebench","ietf_iotagent"] },
+      { name: "9.3 Token-cost structure of multi-agent systems", d2: "MEDIUM — cost/resource modeling = optimization + queueing/stochastic.", def: "Model when multi-agent decomposition is cost-effective vs wasteful, under equal token budget.", why: "Classical analogue — Amdahl's law characterizes parallelism vs overhead via a serial fraction. Where it breaks — cost is tokens with nonlinear quality effects; there is no clean serial fraction.", impl: ["Open","★★ ripe","Unmeasured: cost-quality curves vs agent count"], cite: ["collectivekv","topclass"] }
+    ]},
+
+    { name: "10 · Training agents", def: "Training for agentic behavior lags inference-time engineering; most agents are base LLMs plus prompting and light fine-tuning.", children: [
+      { name: "10.1 Fine-tuning for tool / async / context ops", def: "Train models to manipulate tools, futures, and external memory as first-class operations, not just via prompting.", why: "Classical analogue — syscall / OS APIs are explicit, typed, and taught via docs and compilers. Where it breaks — the API to tools and memory is text; training must teach NL conventions that generalize across tools.", impl: ["Open","★★★ ripe","Top-10","Unmeasured: generalization to new tools/schemas"], cite: ["memagent","procmem"] },
+      { name: "10.2 RL for multi-turn & multi-agent interaction", def: "RL formulations and environments for realistic multi-turn, multi-agent tasks with workable rewards.", why: "Classical analogue — multi-agent RL assumes defined state spaces and reward functions. Where it breaks — NL environments are high-dimensional, partially observed; rewards are hard to define and compute.", impl: ["Open","★ ripe","Unmeasured: sample efficiency / generalization"], cite: ["memagent","memp"] },
+      { name: "10.3 Data generation & distillation for agentic skills", def: "Scalable datasets and distillation that capture planning, tool use, and memory without encoding errors.", why: "Classical analogue — imitation learning / DAgger relies on expert demonstrations. Where it breaks — the experts are flawed LLMs; self-play and synthetic traces can amplify errors.", impl: ["Open","★★ ripe","Unmeasured: distillation effect on robustness/safety"], cite: ["procmem","evalsurvey"] }
+    ]},
+
+    { name: "11 · Serving, statelessness & determinism", d2: "MEDIUM — service architecture; resource-oriented (REST) and edge serving.", def: "The layer below the agent: the LLM exposed as a stateless, deterministic-in-principle compute resource, and how state and serving are structured around it.", children: [
+      { name: "11.1 Deterministic inference & batch-invariance", def: "Make LLM inference bitwise-reproducible without sacrificing throughput, and localize nondeterminism to the sampler.", why: "Classical analogue — a pure function returns identical output for identical input. Where it breaks — temp-0 outputs still vary because kernels are not batch-invariant; a request's batch composition shifts with server load.", impl: ["Resolving","★★★ ripe","Newly measured: bitwise reproducibility vs throughput"], cite: ["batchinvariant","llm42"] },
+      { name: "11.2 Determinism as a declarable contract", def: "Expose idempotency / determinism as an optional, negotiable per-request capability, paid for only when needed.", why: "Classical analogue — QoS / capability negotiation in protocols. Where it breaks — determinism is bound to kernel design with fixed overhead, not advertised as a contract the caller can request.", impl: ["Open","★★ ripe","Unmeasured: cost / coverage of on-demand determinism"], cite: ["llm42","batchinvariant"] },
+      { name: "11.3 Resource-oriented serving & externalized state as a graph", d2: "MEDIUM — resource-oriented (REST/HATEOAS) service architecture; graph theory.", def: "A principled resource model at the agent layer: reasoning forks, continuations, and rollback as a versioned, addressable resource graph with consistency semantics.", why: "Classical analogue — REST / HATEOAS: addressable resources with hypermedia-driven state transitions. Where it breaks — serving-efficiency REST exists (MicroServe), but the agent-level resource graph, an agency / HATEOAS diagnostic, and core-idempotency-as-contract are missing; externalized state is re-injected ad hoc.", impl: ["Open","★★★ ripe","Open framing contribution"], cite: ["microserve","serverlessllm","maca"] }
+    ]},
+
+    { name: "How to read this map — & caveats", def: "Tree = 11 research branches, each with 3 open problems. Use the top-bar toggles to overlay the three axes.", children: [
+      { name: "Systems lens (gold box)", def: "Each problem's classical-CS analogue and exactly where it breaks for a probabilistic, natural-language core." },
+      { name: "Status & ripeness (chips)", def: "Open vs Contested; ripeness ★–★★★ (the source report's 'ripest-for-impact' rank within each branch); Top-10 = one of the report's decisive experiments; plus what is measured vs unmeasured today." },
+      { name: "Key references", def: "1–3 primary sources per problem; full entries link out. Mirrors the two source reports in state_of_the_art/." },
+      { name: "Sourcing caveat", def: "Snapshot mid-2026. Several cited works carry 2026 arXiv IDs that postdate the assistant's training cutoff, and some authors/venues are unconfirmed. Verify against the PDFs of record before citing.", impl: ["Verify before citing"] }
+    ]}
+  ]
+};
+
+/* ---------- Setup ---------- */
+const svg = d3.select("svg");
+const gZoom = svg.append("g");
+const gLink = gZoom.append("g");
+const gNode = gZoom.append("g");
+
+const palette = d3.scaleOrdinal(d3.schemeTableau10.concat(["#c792ea","#80cbc4","#ffab91","#a5d6a7"]));
+const dx = 22, dy = 230;
+const tree = d3.tree().nodeSize([dx, dy]);
+const diagonal = d3.linkHorizontal().x(d => d.y).y(d => d.x);
+
+const root = d3.hierarchy(DATA);
+root.x0 = 0; root.y0 = 0;
+let idc = 0;
+root.descendants().forEach(d => {
+  d.id = ++idc;
+  d._children = d.children;
+  d.branch = (d.depth >= 1) ? d.ancestors().reverse()[1].data.name : "root";
+  if (d.depth >= 1) d.children = null;   // start collapsed: show top layers only
+});
+
+const zoom = d3.zoom().scaleExtent([0.25, 2.5]).on("zoom", e => gZoom.attr("transform", e.transform));
+svg.call(zoom).on("dblclick.zoom", null);
+
+function branchColor(d){ return d.depth === 0 ? "#6ea8fe" : palette(d.branch); }
+
+/* ---------- Info axes (toggleable: Why, References; future: Landscape) ---------- */
+const show = { why: false, refs: false, impl: false, d2: false };
+function nodeHasInfo(d){ return (show.why && d.data.why) || (show.refs && d.data.cite && d.data.cite.length) || (show.impl && d.data.impl && d.data.impl.length) || (show.d2 && d.data.d2); }
+// Landscape links — official/canonical homepages (confident set; unmapped chips stay plain text).
+const LINKS = {
+  "OpenAI":"https://openai.com", "OpenAI o-series":"https://openai.com", "OpenAI GPTs":"https://openai.com", "OpenAI AgentKit":"https://openai.com",
+  "OpenAI function calling":"https://platform.openai.com/docs/guides/function-calling", "OpenAI structured outputs":"https://platform.openai.com/docs/guides/structured-outputs",
+  "OpenAI fine-tuning":"https://platform.openai.com/docs/guides/fine-tuning", "OpenAI Agents SDK":"https://openai.github.io/openai-agents-python/",
+  "OpenAI Codex CLI":"https://github.com/openai/codex", "OpenAI Evals":"https://github.com/openai/evals",
+  "Anthropic":"https://www.anthropic.com", "Anthropic tool use":"https://docs.claude.com", "Claude Code":"https://www.anthropic.com/claude-code",
+  "Claude Agent SDK":"https://docs.claude.com", "Claude Skills":"https://docs.claude.com", "Claude extended thinking":"https://docs.claude.com",
+  "Google Gemini":"https://ai.google.dev", "Gemma":"https://ai.google.dev/gemma", "Vertex AI Agent Builder":"https://cloud.google.com/products/agent-builder",
+  "Mistral":"https://mistral.ai", "Meta Llama":"https://www.llama.com", "Llama":"https://www.llama.com", "DeepSeek":"https://www.deepseek.com", "DeepSeek-R1":"https://www.deepseek.com",
+  "Cohere":"https://cohere.com", "Qwen":"https://github.com/QwenLM",
+  "LiteLLM":"https://www.litellm.ai", "OpenRouter":"https://openrouter.ai", "Vercel AI SDK":"https://sdk.vercel.ai", "Vercel":"https://vercel.com",
+  "Ollama":"https://ollama.com", "vLLM":"https://github.com/vllm-project/vllm", "llama.cpp":"https://github.com/ggml-org/llama.cpp", "llama.cpp GBNF":"https://github.com/ggml-org/llama.cpp",
+  "Hugging Face PEFT":"https://github.com/huggingface/peft", "LoRA / QLoRA":"https://github.com/huggingface/peft", "Unsloth":"https://unsloth.ai", "Hugging Face Hub":"https://huggingface.co",
+  "LangChain":"https://www.langchain.com", "LangChain / LangGraph":"https://www.langchain.com/langgraph", "LangChain tools":"https://www.langchain.com", "LangChain Tools":"https://www.langchain.com",
+  "LangChain splitters":"https://www.langchain.com", "LangChain Hub":"https://smith.langchain.com/hub", "LangGraph":"https://www.langchain.com/langgraph",
+  "LangGraph Platform":"https://www.langchain.com/langgraph", "LangGraph interrupts":"https://www.langchain.com/langgraph", "LangServe":"https://github.com/langchain-ai/langserve",
+  "LangSmith":"https://www.langchain.com/langsmith", "LangMem":"https://github.com/langchain-ai/langmem",
+  "LlamaIndex":"https://www.llamaindex.ai", "LlamaIndex node parsers":"https://www.llamaindex.ai",
+  "AutoGen":"https://microsoft.github.io/autogen/", "CrewAI":"https://www.crewai.com", "Semantic Kernel":"https://github.com/microsoft/semantic-kernel", "Semantic Kernel plugins":"https://github.com/microsoft/semantic-kernel",
+  "Pydantic AI":"https://ai.pydantic.dev", "AutoGPT":"https://agpt.co", "BabyAGI":"https://github.com/yoheinakajima/babyagi", "alexzhang13/rlm (research)":"https://github.com/alexzhang13/rlm",
+  "Cursor":"https://cursor.com", "GitHub Copilot":"https://github.com/features/copilot", "Aider":"https://aider.chat", "Devin":"https://devin.ai",
+  "Haystack":"https://haystack.deepset.ai", "RAGFlow":"https://github.com/infiniflow/ragflow",
+  "Pinecone":"https://www.pinecone.io", "Weaviate":"https://weaviate.io", "Qdrant":"https://qdrant.tech", "Chroma":"https://www.trychroma.com", "Milvus":"https://milvus.io",
+  "pgvector":"https://github.com/pgvector/pgvector", "FAISS":"https://github.com/facebookresearch/faiss", "Unstructured":"https://unstructured.io",
+  "Neo4j":"https://neo4j.com", "Microsoft GraphRAG":"https://github.com/microsoft/graphrag",
+  "Letta (MemGPT)":"https://www.letta.com", "Mem0":"https://mem0.ai", "Zep":"https://www.getzep.com",
+  "Temporal":"https://temporal.io", "Redis":"https://redis.io", "Composio":"https://composio.dev", "Instructor":"https://python.useinstructor.com",
+  "Model Context Protocol":"https://modelcontextprotocol.io", "mcp.so":"https://mcp.so", "MCP registries":"https://mcp.so", "FastMCP":"https://github.com/jlowin/fastmcp",
+  "n8n":"https://n8n.io", "Zapier":"https://zapier.com", "Make":"https://www.make.com", "Pipedream":"https://pipedream.com",
+  "NeMo Guardrails":"https://github.com/NVIDIA/NeMo-Guardrails", "Guardrails AI":"https://www.guardrailsai.com", "Llama Guard":"https://github.com/meta-llama/PurpleLlama", "Lakera":"https://www.lakera.ai",
+  "Outlines":"https://github.com/dottxt-ai/outlines", "Guidance":"https://github.com/guidance-ai/guidance", "XGrammar":"https://github.com/mlc-ai/xgrammar",
+  "DSPy":"https://dspy.ai", "TextGrad":"https://github.com/zou-group/textgrad",
+  "Auth0":"https://auth0.com", "Okta":"https://www.okta.com", "Keycloak":"https://www.keycloak.org", "WorkOS":"https://workos.com",
+  "Open Policy Agent (OPA)":"https://www.openpolicyagent.org", "Oso":"https://www.osohq.com", "Cerbos":"https://www.cerbos.dev", "Cedar":"https://www.cedarpolicy.com",
+  "AWS Step Functions":"https://aws.amazon.com/step-functions/", "AWS Bedrock Agents":"https://aws.amazon.com/bedrock/agents/", "Inngest":"https://www.inngest.com", "HumanLayer":"https://www.humanlayer.dev",
+  "Airflow":"https://airflow.apache.org", "Prefect":"https://www.prefect.io", "Dagster":"https://dagster.io", "Windmill":"https://www.windmill.dev",
+  "Docker":"https://www.docker.com", "Kubernetes":"https://kubernetes.io", "E2B":"https://e2b.dev", "Modal":"https://modal.com", "Firecracker":"https://firecracker-microvm.github.io", "Daytona":"https://www.daytona.io",
+  "Langfuse":"https://langfuse.com", "Arize Phoenix":"https://phoenix.arize.com", "Helicone":"https://www.helicone.ai", "W&B Weave":"https://wandb.ai", "Weights & Biases":"https://wandb.ai", "OpenLLMetry":"https://github.com/traceloop/openllmetry",
+  "Ragas":"https://docs.ragas.io", "DeepEval":"https://github.com/confident-ai/deepeval", "Promptfoo":"https://www.promptfoo.dev", "Braintrust":"https://www.braintrust.dev",
+  "BentoML":"https://www.bentoml.com", "MLflow":"https://mlflow.org", "DVC":"https://dvc.org", "Git":"https://git-scm.com",
+  "Azure AI Foundry":"https://azure.microsoft.com/en-us/products/ai-foundry", "Dify":"https://dify.ai", "Flowise":"https://flowiseai.com", "Langflow":"https://www.langflow.org", "Botpress":"https://botpress.com"
+};
+function chipsHtml(items){
+  return items.map(x => {
+    const u = LINKS[x];
+    return u ? `<a class="chip" href="${u}" target="_blank" rel="noopener">${escapeHtml(x)}</a>`
+             : `<span class="chip">${escapeHtml(x)}</span>`;
+  }).join("");
+}
+function refLinkHtml(id){
+  const r = REFS[id]; if (!r) return "";
+  return `<div class="ref"><a href="${r.url}" target="_blank" rel="noopener">${escapeHtml(r.authors)} (${r.year}) — ${escapeHtml(r.title)}</a><span class="venue">${escapeHtml(r.venue)}</span></div>`;
+}
+function sourcesHtml(cite){
+  return "Sources: " + cite.map(id => REFS[id]
+    ? `<a href="${REFS[id].url}" target="_blank" rel="noopener">${escapeHtml(REFS[id].short)}</a>` : "")
+    .filter(Boolean).join(" · ");
+}
+
+/* ---------- Tree render ---------- */
+function update(source){
+  const nodes = root.descendants();
+  const links = root.links();
+  tree(root);
+
+  const t = svg.transition().duration(250);
+
+  const node = gNode.selectAll("g.node").data(nodes, d => d.id);
+  const nodeEnter = node.enter().append("g")
+    .attr("class","node")
+    .attr("transform", d => `translate(${source.y0},${source.x0})`)
+    .on("click", (e,d) => {
+       const willExpand = !d.children && d._children;
+       toggle(d); select(d); update(d);
+       if (willExpand) focusNode(d);
+    })
+    .on("dblclick", (e,d) => { e.stopPropagation(); if (d._children || d.children) present(d); })
+    .on("mouseover", (e,d) => { if(!pinned) render(d); });
+
+  nodeEnter.append("circle").attr("r", 5)
+    .attr("fill", d => d._children ? branchColor(d) : "#11141a")
+    .attr("stroke", d => branchColor(d));
+
+  nodeEnter.append("text")
+    .attr("dy","0.32em")
+    .attr("x", d => d._children ? -10 : 10)
+    .attr("text-anchor", d => d._children ? "end" : "start")
+    .text(d => d.data.name);
+
+  const nodeMerge = nodeEnter.merge(node);
+  nodeMerge.transition(t).attr("transform", d => `translate(${d.y},${d.x})`);
+  nodeMerge.select("circle").attr("fill", d => (d._children && !d.children) ? branchColor(d) : "#11141a");
+  nodeMerge.select("text")
+    .attr("x", d => d.children || d._children ? -10 : 10)
+    .attr("text-anchor", d => d.children || d._children ? "end" : "start");
+
+  node.exit().transition(t).remove()
+    .attr("transform", d => `translate(${source.y},${source.x})`);
+
+  const link = gLink.selectAll("path.link").data(links, d => d.target.id);
+  const linkEnter = link.enter().append("path").attr("class","link")
+    .attr("d", () => { const o = {x: source.x0, y: source.y0}; return diagonal({source:o,target:o}); });
+  link.merge(linkEnter).transition(t).attr("d", diagonal);
+  link.exit().transition(t).remove()
+    .attr("d", () => { const o = {x: source.x, y: source.y}; return diagonal({source:o,target:o}); });
+
+  root.eachBefore(d => { d.x0 = d.x; d.y0 = d.y; });
+  applySearch();
+  refreshHighlight();
+  refreshInfo();
+}
+
+// Pan/zoom so the expanded node and its visible children are framed in view.
+function focusNode(d){
+  const nodes = d.descendants();
+  const xs = nodes.map(n => n.x), ys = nodes.map(n => n.y);
+  const minX = Math.min(...xs), maxX = Math.max(...xs);
+  const minY = Math.min(...ys), maxY = Math.max(...ys);
+  const sw = svg.node().clientWidth, sh = svg.node().clientHeight, pad = 80;
+  const needW = (maxY - minY) + dy * 1.3 + pad, needH = (maxX - minX) + pad * 2;
+  const k0 = d3.zoomTransform(svg.node()).k;
+  let scale = Math.min(k0, sw / needW, sh / needH);
+  scale = Math.max(0.3, Math.min(scale, 2.0));
+  const cy = (minY + maxY) / 2, cx = (minX + maxX) / 2;
+  const tx = sw / 2 - scale * cy, ty = sh / 2 - scale * cx;
+  svg.transition().duration(450).call(zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(scale));
+}
+
+function toggle(d){
+  if (d.children) { d.children = null; }
+  else { d.children = d._children; }
+}
+
+/* ---------- Side panel + selection ---------- */
+let pinned = false, selectedId = null;
+const elTerm = document.getElementById("term");
+const elDef  = document.getElementById("def");
+const elCrumb= document.getElementById("crumb");
+const elKids = document.getElementById("kids");
+const elWhy  = document.getElementById("why");
+const elRefs = document.getElementById("refs");
+const elImpl = document.getElementById("impl");
+const elD2   = document.getElementById("d2");
+
+function render(d){
+  const color = branchColor(d);
+  elTerm.innerHTML = `<span class="swatch" style="background:${color}"></span>${escapeHtml(d.data.name)}`;
+  elDef.textContent = d.data.def || "—";
+  elDef.classList.toggle("empty", !d.data.def);
+  elCrumb.textContent = d.ancestors().reverse().slice(0,-1).map(a => escapeHtml(a.data.name)).join("  ›  ");
+  renderAxes(d);
+  const kids = d._children || d.children;
+  elKids.innerHTML = "";
+  if (kids && kids.length){
+    const presentBtn = document.createElement("button");
+    presentBtn.className = "present-btn";
+    presentBtn.textContent = "▶ Present this page";
+    presentBtn.onclick = () => present(d);
+    elKids.appendChild(presentBtn);
+
+    const h = document.createElement("h2"); h.textContent = "Explore"; elKids.appendChild(h);
+    kids.forEach(k => {
+      const b = document.createElement("button");
+      b.textContent = k.data.name;
+      b.onclick = () => {
+        if (!d.children) { d.children = d._children; update(d); focusNode(d); }
+        setSelected(k);
+      };
+      elKids.appendChild(b);
+    });
+  }
+}
+function renderAxes(d){
+  if (show.why && d.data.why){ elWhy.hidden = false; elWhy.innerHTML = `<h2>Systems lens</h2><p>${escapeHtml(d.data.why)}</p>`; }
+  else { elWhy.hidden = true; elWhy.innerHTML = ""; }
+  if (show.refs && d.data.cite && d.data.cite.length){ elRefs.hidden = false; elRefs.innerHTML = `<h2>Key references</h2>` + d.data.cite.map(refLinkHtml).join(""); }
+  else { elRefs.hidden = true; elRefs.innerHTML = ""; }
+  if (show.impl && d.data.impl && d.data.impl.length){ elImpl.hidden = false; elImpl.innerHTML = `<h2>Status &amp; ripeness</h2><div class="chips">` + chipsHtml(d.data.impl) + `</div>`; }
+  else { elImpl.hidden = true; elImpl.innerHTML = ""; }
+  if (show.d2 && d.data.d2){ elD2.hidden = false; elD2.innerHTML = `<h2>⬢ Why it matters to D2</h2><p>${escapeHtml(d.data.d2)}</p>`; }
+  else { elD2.hidden = true; elD2.innerHTML = ""; }
+}
+function refreshHighlight(){
+  gNode.selectAll("g.node")
+    .classed("selected", n => n.id === selectedId)
+    .select("circle").attr("r", n => n.id === selectedId ? 7.5 : 5);
+}
+function refreshInfo(){ gNode.selectAll("g.node").classed("hasinfo", d => nodeHasInfo(d)).classed("d2hit", d => show.d2 && !!d.data.d2); }
+function select(d){ pinned = true; selectedId = d.id; render(d); refreshHighlight(); }
+function panTo(d){
+  const sw = svg.node().clientWidth, sh = svg.node().clientHeight;
+  const k = d3.zoomTransform(svg.node()).k;
+  const tx = sw * 0.34 - k * d.y, ty = sh / 2 - k * d.x;
+  svg.transition().duration(300).call(zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(k));
+}
+function setSelected(d){ select(d); panTo(d); }
+function escapeHtml(s){ return s.replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+
+/* ---------- Toggle handlers ---------- */
+const togWhy = document.getElementById("togWhy");
+const togRefs = document.getElementById("togRefs");
+const togImpl = document.getElementById("togImpl");
+const togD2 = document.getElementById("togD2");
+function onToggle(){
+  show.why = togWhy.checked;
+  show.refs = togRefs.checked;
+  show.impl = togImpl.checked;
+  show.d2 = togD2.checked;
+  const cur = root.descendants().find(n => n.id === selectedId);
+  if (cur) renderAxes(cur);
+  refreshInfo();
+  if (!slide.hidden) renderSlide();
+}
+togWhy.addEventListener("change", onToggle);
+togRefs.addEventListener("change", onToggle);
+togImpl.addEventListener("change", onToggle);
+togD2.addEventListener("change", onToggle);
+
+/* ---------- Search ---------- */
+const search = document.getElementById("search");
+let query = "";
+search.addEventListener("input", () => {
+  query = search.value.trim().toLowerCase();
+  if (query){
+    root.descendants().forEach(d => {
+      if (d.data.name.toLowerCase().includes(query))
+        d.ancestors().forEach(a => { if (a._children && !a.children) a.children = a._children; });
+    });
+    update(root);
+  } else { applySearch(); }
+});
+function applySearch(){
+  gNode.selectAll("g.node")
+    .classed("match", d => query && d.data.name.toLowerCase().includes(query))
+    .classed("dim", d => query && !d.data.name.toLowerCase().includes(query));
+}
+
+/* ---------- Controls ---------- */
+document.getElementById("expand").onclick = () => {
+  root.each(d => { if (d._children) d.children = d._children; });
+  update(root); fit();
+};
+document.getElementById("collapse").onclick = () => {
+  root.descendants().forEach(d => { if (d.depth >= 1){ d._children = d._children || d.children; d.children = null; } });
+  update(root); fit();
+};
+document.getElementById("reset").onclick = () => { search.value=""; query=""; pinned=false; applySearch(); fit(); };
+
+/* ---------- Fit to view ---------- */
+function fit(){
+  setTimeout(() => {
+    const b = gZoom.node().getBBox();
+    const sw = svg.node().clientWidth, sh = svg.node().clientHeight;
+    if (!b.width || !b.height) return;
+    const scale = Math.min(2.2, 0.9 / Math.max(b.width/sw, b.height/sh));
+    const tx = sw/2 - scale*(b.x + b.width/2);
+    const ty = sh/2 - scale*(b.y + b.height/2);
+    svg.transition().duration(400).call(zoom.transform, d3.zoomIdentity.translate(tx,ty).scale(scale));
+  }, 300);
+}
+
+/* ---------- Present (page / slide) mode ---------- */
+const slide = document.getElementById("slide");
+const slideTitle = document.getElementById("slideTitle");
+const slideDef = document.getElementById("slideDef");
+const slideCrumb = document.getElementById("slideCrumb");
+const slideGrid = document.getElementById("slideGrid");
+const slidePos = document.getElementById("slidePos");
+const slideWhy = document.getElementById("slideWhy");
+const slideSources = document.getElementById("slideSources");
+const slideImpl = document.getElementById("slideImpl");
+const slideD2 = document.getElementById("slideD2");
+let slideNode = null;
+
+function present(d){
+  if (!(d._children || d.children)) return;
+  slideNode = d; renderSlide(); slide.hidden = false;
+}
+
+function renderSlide(){
+  const d = slideNode;
+  slideCrumb.textContent = d.ancestors().reverse().map(a => a.data.name).join("  ›  ");
+  slideTitle.innerHTML = `<span class="swatch" style="background:${branchColor(d)}"></span>${escapeHtml(d.data.name)}`;
+  slideDef.textContent = d.data.def || "";
+  slideD2.textContent = (show.d2 && d.data.d2) ? d.data.d2 : "";
+  slideWhy.textContent = (show.why && d.data.why) ? d.data.why : "";
+  slideSources.innerHTML = (show.refs && d.data.cite && d.data.cite.length) ? sourcesHtml(d.data.cite) : "";
+  slideImpl.innerHTML = (show.impl && d.data.impl && d.data.impl.length) ? chipsHtml(d.data.impl) : "";
+  const kids = d._children || d.children || [];
+  slideGrid.innerHTML = "";
+  kids.forEach(k => {
+    const card = document.createElement("div");
+    card.className = "card";
+    card.style.borderTopColor = branchColor(k);
+    const h = document.createElement("h3"); h.textContent = k.data.name; card.appendChild(h);
+    const p = document.createElement("p"); p.textContent = k.data.def || ""; card.appendChild(p);
+    if (show.d2 && k.data.d2){ const wd = document.createElement("p"); wd.className = "d2"; wd.textContent = k.data.d2; card.appendChild(wd); }
+    if (show.why && k.data.why){ const w = document.createElement("p"); w.className = "why"; w.textContent = k.data.why; card.appendChild(w); }
+    if (show.refs && k.data.cite && k.data.cite.length){ const s = document.createElement("div"); s.className = "sources"; s.innerHTML = sourcesHtml(k.data.cite); card.appendChild(s); }
+    if (show.impl && k.data.impl && k.data.impl.length){ const m = document.createElement("div"); m.className = "impl"; m.innerHTML = chipsHtml(k.data.impl); card.appendChild(m); }
+    const gk = k._children || k.children;
+    if (gk && gk.length){
+      const ul = document.createElement("ul"); ul.className = "sub";
+      gk.forEach(g => {
+        const li = document.createElement("li");
+        li.innerHTML = `<b>${escapeHtml(g.data.name)}</b> — ${escapeHtml(g.data.def || "")}`;
+        ul.appendChild(li);
+      });
+      card.appendChild(ul);
+      card.classList.add("hasKids");
+      card.title = "Open this sub-page";
+      card.onclick = () => { slideNode = k; renderSlide(); };
+    }
+    slideGrid.appendChild(card);
+  });
+  const parent = d.parent;
+  const sibs = parent ? (parent.children || parent._children) : null;
+  slidePos.textContent = (sibs && sibs.length > 1) ? `${sibs.indexOf(d)+1} / ${sibs.length}` : "";
+  slide.scrollTop = 0;
+}
+
+function sib(step){
+  const d = slideNode, parent = d.parent;
+  const sibs = parent ? (parent.children || parent._children) : null;
+  if (!sibs || sibs.length < 2) return;
+  const idx = (sibs.indexOf(d) + step + sibs.length) % sibs.length;
+  slideNode = sibs[idx]; renderSlide();
+}
+function goUp(){ if (slideNode.parent){ slideNode = slideNode.parent; renderSlide(); } }
+function goInto(){
+  const kids = (slideNode._children || slideNode.children || []).filter(k => k._children || k.children);
+  if (kids.length){ slideNode = kids[0]; renderSlide(); }
+}
+function closeSlide(){ slide.hidden = true; }
+
+document.getElementById("prevSib").onclick = () => sib(-1);
+document.getElementById("nextSib").onclick = () => sib(1);
+document.getElementById("upSlide").onclick = goUp;
+document.getElementById("closeSlide").onclick = closeSlide;
+
+/* ---------- Keyboard navigation ---------- */
+function visibleList(){ return root.descendants().slice().sort((a,b) => a.x - b.x); }
+
+document.addEventListener("keydown", e => {
+  // Present mode
+  if (!slide.hidden){
+    if (e.key === "Escape") closeSlide();
+    else if (e.key === "ArrowLeft") sib(-1);
+    else if (e.key === "ArrowRight") sib(1);
+    else if (e.key === "ArrowUp") goUp();
+    else if (e.key === "ArrowDown") goInto();
+    return;
+  }
+  // Tree mode (ignore while typing in search)
+  if (document.activeElement === search) return;
+  let cur = root.descendants().find(n => n.id === selectedId) || root;
+  switch (e.key){
+    case "ArrowDown": { e.preventDefault(); const L = visibleList(); const i = L.indexOf(cur); if (i > -1 && i < L.length-1) setSelected(L[i+1]); break; }
+    case "ArrowUp":   { e.preventDefault(); const L = visibleList(); const i = L.indexOf(cur); if (i > 0) setSelected(L[i-1]); break; }
+    case "ArrowRight":{ e.preventDefault();
+        if (cur._children && !cur.children){ cur.children = cur._children; update(cur); setSelected(cur); }
+        else if (cur.children && cur.children.length){ setSelected(cur.children[0]); }
+        break; }
+    case "ArrowLeft": { e.preventDefault();
+        if (cur.children){ cur.children = null; update(cur); setSelected(cur); }
+        else if (cur.parent){ setSelected(cur.parent); }
+        break; }
+    case "Enter": { e.preventDefault(); if (cur._children || cur.children) present(cur); break; }
+    case "p": { if (cur && (cur._children || cur.children)) present(cur); break; }
+  }
+});
+
+/* ---------- Init ---------- */
+update(root);
+render(root);
+selectedId = root.id;
+refreshHighlight();
+pinned = false;
+fit();
+window.addEventListener("resize", fit);
+</script>
+</body>
+</html>

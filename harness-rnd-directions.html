@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Harness R&amp;D Directions for AI Agents</title>
+<style>
+  :root{ --ink:#1e1b2e; --muted:#6b6880; --line:#c7c9d6;
+         --blue:#1d4ed8; --teal:#0f766e; --purple:#6d28d9; --orange:#c2410c; }
+  *{box-sizing:border-box;}
+  html,body{margin:0;height:100%;background:#f6f5fb;color:var(--ink);
+    font-family:-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased;}
+  #wrap{height:100%;display:flex;align-items:center;justify-content:center;}
+  #scaler{display:flex;align-items:center;justify-content:center;}
+  #stage{position:relative;width:1280px;height:720px;background:#fff;border:1px solid #e7e1f6;
+    border-radius:16px;box-shadow:0 10px 40px rgba(76,29,149,.10);overflow:hidden;}
+
+  #title{position:absolute;left:0;right:0;top:20px;text-align:center;}
+  #title h1{margin:0;font-size:27px;font-weight:800;letter-spacing:-.01em;}
+  #title p{margin:5px 0 0;font-size:13px;color:var(--muted);}
+
+  /* connector lines */
+  svg.links{position:absolute;inset:0;width:100%;height:100%;z-index:1;pointer-events:none;}
+  .link{stroke:#d8dae6;stroke-width:1.5;fill:none;}
+
+  /* boxes (flat, 2px colored border — harness-llm-animation style) */
+  .box{position:absolute;z-index:2;border-radius:14px;border:2px solid var(--ac);background:var(--bg);
+    transform:translate(-50%,-50%);padding:9px 12px 8px;}
+  .box .hd{display:flex;align-items:center;gap:8px;color:var(--ac);font-weight:800;}
+  .box .hd svg{flex:none;width:21px;height:21px;}
+  .box .hd .nm{font-size:14px;line-height:1.1;letter-spacing:.01em;}
+  .card{width:300px;height:128px;cursor:pointer;transition:box-shadow .12s,transform .12s;}
+  .card:hover{box-shadow:0 8px 22px rgba(76,29,149,.14);transform:translate(-50%,-50%) translateY(-2px);}
+  .card .items{margin:7px 0 0;font-size:11.7px;line-height:1.5;color:var(--muted);}
+  .card .foot{position:absolute;left:12px;right:12px;bottom:7px;font-size:11px;color:var(--ac);
+    font-weight:700;opacity:.92;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .card .foot .pl{color:var(--muted);font-weight:600;}
+
+  /* central hub */
+  #hub{width:286px;height:128px;--ac:var(--blue);--bg:#e7eeff;border-width:2.5px;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;
+    cursor:default;}
+  #hub .k{font-size:32px;font-weight:800;color:var(--blue);letter-spacing:.01em;}
+  #hub .s{margin-top:5px;font-size:12.5px;color:#3b3552;font-weight:600;padding:0 14px;line-height:1.3;}
+
+  /* secondary flow */
+  #flow{position:absolute;z-index:2;left:0;right:0;top:560px;display:flex;align-items:center;justify-content:center;}
+  .pill{font-size:12.5px;font-weight:650;color:#3b3552;background:#fff;border:1.5px solid var(--line);
+    border-radius:999px;padding:6px 13px;white-space:nowrap;}
+  .pill.key{color:#fff;background:var(--blue);border-color:var(--blue);}
+  .arr{color:#aab1c6;font-size:14px;font-weight:800;padding:0 8px;}
+  svg.floop{position:absolute;z-index:1;inset:0;width:100%;height:100%;pointer-events:none;}
+  .loop{stroke:#c2c4d4;stroke-width:1.6;fill:none;stroke-dasharray:5 5;}
+  .looplbl{fill:#9a93ac;font:600 11px -apple-system,"Segoe UI",sans-serif;}
+
+  #cap{position:absolute;z-index:2;left:0;right:0;bottom:22px;text-align:center;font-size:16px;color:#3b3552;}
+  #cap b.l{color:var(--purple);} #cap b.h{color:var(--blue);}
+  .hint{position:absolute;right:13px;bottom:8px;font-size:11px;color:#b4adc6;z-index:2;}
+
+  /* expand panel (modal) */
+  #ov{position:absolute;inset:0;z-index:9;background:rgba(30,27,46,.34);
+    display:none;align-items:center;justify-content:center;}
+  #ov.show{display:flex;}
+  .sheet{width:640px;max-width:92%;max-height:88%;overflow:auto;background:#fff;border-radius:16px;
+    border:2px solid var(--ac);box-shadow:0 24px 70px rgba(30,27,46,.3);padding:22px 26px 24px;position:relative;}
+  .sheet .x{position:absolute;top:12px;right:14px;border:0;background:none;font-size:24px;line-height:1;
+    color:#9a93ac;cursor:pointer;}
+  .sheet .mh{display:flex;align-items:center;gap:11px;color:var(--ac);font-weight:800;font-size:21px;}
+  .sheet .mh svg{flex:none;width:28px;height:28px;}
+  .sheet .desc{margin:10px 0 16px;font-size:14.5px;line-height:1.5;color:#3b3552;}
+  .lbl{font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:#8a82a0;font-weight:800;margin:2px 0 8px;}
+  .chips{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:18px;}
+  .chip{font-size:12.5px;color:var(--ac);background:var(--bg);border:1px solid var(--ac);
+    border-radius:999px;padding:4px 11px;font-weight:600;}
+  ul.refs{list-style:none;margin:0;padding:0;}
+  ul.refs li{padding:9px 11px;border:1px solid #e7e1f6;border-radius:9px;margin-bottom:8px;background:#fbfaff;}
+  ul.refs a{font-size:14px;font-weight:700;color:var(--ac);text-decoration:none;}
+  ul.refs a:hover{text-decoration:underline;}
+  ul.refs .meta{display:block;margin-top:2px;font-size:12px;color:var(--muted);
+    font-family:ui-monospace,Menlo,Consolas,monospace;}
+</style>
+</head>
+<body>
+<div id="wrap"><div id="scaler"><div id="stage">
+  <div id="title"><h1>Harness R&amp;D Directions for AI Agents</h1>
+    <p>The Harness turns a raw language model into a reliable, stateful, constrained, verifiable, self-repairing agent &mdash; click any direction to expand</p></div>
+
+  <svg class="links" viewBox="0 0 1280 720" preserveAspectRatio="none"><g id="linkg"></g></svg>
+
+  <div class="box" id="hub"><div class="k">Harness</div>
+    <div class="s">Control, reliability, and agency around the LLM</div></div>
+  <div id="cards"></div>
+
+  <div id="flow"></div>
+  <svg class="floop" viewBox="0 0 1280 720" preserveAspectRatio="none">
+    <defs><marker id="lh" markerWidth="9" markerHeight="9" refX="6.5" refY="3" orient="auto">
+      <path d="M0,0 L7,3 L0,6 Z" fill="#c2c4d4"/></marker></defs>
+    <path class="loop" marker-end="url(#lh)" d="M978,610 C978,644 978,644 645,644 C432,644 372,644 306,614"/>
+    <text class="looplbl" x="650" y="660" text-anchor="middle">feedback loop &#8635;</text>
+  </svg>
+
+  <div id="cap">The <b class="l">LLM</b> provides intelligence. The <b class="h">Harness</b> provides control, reliability, and agency.</div>
+  <div class="hint">click a direction &middot; Esc to close</div>
+
+  <div id="ov"><div class="sheet" id="sheet"></div></div>
+</div></div></div>
+
+<script>
+const HUB={x:640,y:312};
+const ICON={
+  context:'<path d="M4 4h16l-6 8v6l-4 2v-8z"/>',
+  memory:'<path d="M8 8h8v8H8zM10 5v3M14 5v3M10 16v3M14 16v3M5 10h3M5 14h3M16 10h3M16 14h3"/>',
+  planning:'<circle cx="5" cy="6" r="2"/><circle cx="19" cy="6" r="2"/><circle cx="12" cy="18" r="2"/><path d="M6.7 7.4 10.6 15.8M17.3 7.4 13.4 15.8M7 6h10"/>',
+  constrained:'<path d="M10 4C7 4 8 9 4 12c4 3 3 8 6 8"/><path d="M14 4c3 0 2 5 6 8-4 3-3 8-6 8"/>',
+  validation:'<path d="M12 3l7 3v5c0 5-3 8-7 10-4-2-7-5-7-10V6z"/><path d="M9 12l2.2 2.2L15.5 10"/>',
+  recovery:'<path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v6h-6"/>',
+  orchestration:'<circle cx="12" cy="12" r="2.3"/><circle cx="5" cy="5" r="1.8"/><circle cx="19" cy="5" r="1.8"/><circle cx="12" cy="20" r="1.8"/><path d="M10.4 10.4 6.3 6.3M13.6 10.4 17.7 6.3M12 14.3V18.2"/>',
+  evaluation:'<path d="M4 4v16h16"/><rect x="7" y="11" width="3" height="6" rx=".5"/><rect x="12" y="7" width="3" height="10" rx=".5"/><rect x="17" y="13" width="3" height="4" rx=".5"/>'
+};
+const TINT={blue:['#1d4ed8','#eef3ff'],teal:['#0f766e','#e9f6f3'],purple:['#6d28d9','#f3eafe'],orange:['#c2410c','#fff3ea']};
+const A='https://arxiv.org/abs/';
+const DATA=[
+ {x:230,y:150,ac:'blue',ic:'context',t:'Context Construction',
+  desc:'Assembling what the model sees each turn — retrieval, summarization, and reformulation decide whether the right facts are in the window.',
+  items:['retrieval / RAG','summarization','prompt reinjection','task reformulation','state construction'],
+  refs:[['Retrieval-Augmented Generation for Knowledge-Intensive NLP','Lewis et al. 2020 · arXiv:2005.11401',A+'2005.11401'],
+        ['Lost in the Middle: How LMs Use Long Contexts','Liu et al. 2023 · arXiv:2307.03172',A+'2307.03172'],
+        ['Self-RAG: Retrieve, Generate, Critique via Self-Reflection','Asai et al. 2023 · arXiv:2310.11511',A+'2310.11511']]},
+ {x:640,y:150,ac:'teal',ic:'memory',t:'Memory &amp; State',
+  desc:'Persisting information across turns — short-term, episodic, and semantic stores plus a tracked world state and user preferences.',
+  items:['short-term memory','episodic memory','semantic memory','user preferences','world-state tracking'],
+  refs:[['MemGPT: Towards LLMs as Operating Systems','Packer et al. 2023 · arXiv:2310.08560',A+'2310.08560'],
+        ['Generative Agents: Interactive Simulacra of Human Behavior','Park et al. 2023 · arXiv:2304.03442',A+'2304.03442'],
+        ['MemoryBank: Enhancing LLMs with Long-Term Memory','Zhong et al. 2023 · arXiv:2305.10250',A+'2305.10250']]},
+ {x:1050,y:150,ac:'purple',ic:'planning',t:'Planning &amp; Control',
+  desc:'Deciding what to do next and when to stop — reasoning loops, search over actions, branching, and budget-aware control.',
+  items:['ReAct loops','planning','branching','stopping criteria','budget-aware search'],
+  refs:[['ReAct: Synergizing Reasoning and Acting in LMs','Yao et al. 2022 · arXiv:2210.03629',A+'2210.03629'],
+        ['Tree of Thoughts: Deliberate Problem Solving','Yao et al. 2023 · arXiv:2305.10601',A+'2305.10601'],
+        ['Language Agent Tree Search (LATS)','Zhou et al. 2023 · arXiv:2310.04406',A+'2310.04406']]},
+ {x:230,y:312,ac:'orange',ic:'constrained',t:'Constrained Generation',
+  desc:'Forcing the output to be well-formed — grammars, schemas, and typed decoding turn free text into valid, parseable structure.',
+  items:['BNF / grammar constraints','JSON schema','typed outputs','structured decoding','ontologies / DSLs'],
+  refs:[['Grammar-Constrained Decoding for Structured NLP','Geng et al. 2023 · arXiv:2305.13971',A+'2305.13971'],
+        ['Efficient Guided Generation for LLMs (Outlines)','Willard &amp; Louf 2023 · arXiv:2307.09702',A+'2307.09702'],
+        ['PICARD: Constrained Auto-Regressive Decoding','Scholak et al. 2021 · arXiv:2109.05093',A+'2109.05093']]},
+ {x:1050,y:312,ac:'blue',ic:'validation',t:'Validation &amp; Verification',
+  desc:'Checking whether an output is correct, not just well-formed — validators, rule checks, tests, simulations, and critic models.',
+  items:['validators','rule checks','unit tests','simulations','critic models'],
+  refs:[['Self-Refine: Iterative Refinement with Self-Feedback','Madaan et al. 2023 · arXiv:2303.17651',A+'2303.17651'],
+        ['CRITIC: LLMs Self-Correct with Tool-Interactive Critiquing','Gou et al. 2023 · arXiv:2305.11738',A+'2305.11738'],
+        ['Let’s Verify Step by Step (process verifiers)','Lightman et al. 2023 · arXiv:2305.20050',A+'2305.20050']]},
+ {x:230,y:474,ac:'teal',ic:'recovery',t:'Recovery &amp; Self-Repair',
+  desc:'Turning failures into progress — retries, error-aware reprompting, rollback, fallback strategies, and self-reflection.',
+  items:['retries','error-aware reprompting','rollback','fallback strategies','self-reflection'],
+  refs:[['Reflexion: Language Agents with Verbal RL','Shinn et al. 2023 · arXiv:2303.11366',A+'2303.11366'],
+        ['Teaching Large Language Models to Self-Debug','Chen et al. 2023 · arXiv:2304.05128',A+'2304.05128'],
+        ['Training LMs to Self-Correct via RL (SCoRe)','Kumar et al. 2024 · arXiv:2409.12917',A+'2409.12917']]},
+ {x:640,y:474,ac:'purple',ic:'orchestration',t:'Multi-Model / Tool Orchestration',
+  desc:'Routing work across models and tools — planners, critics, routers, and specialized executors instead of one model doing everything.',
+  items:['planner / executor','generator / critic','router model','specialized tools','model selection'],
+  refs:[['HuggingGPT: Solving AI Tasks with ChatGPT and friends','Shen et al. 2023 · arXiv:2303.17580',A+'2303.17580'],
+        ['AutoGen: Multi-Agent Conversation Framework','Wu et al. 2023 · arXiv:2308.08155',A+'2308.08155'],
+        ['RouteLLM: Learning to Route LLMs with Preference Data','Ong et al. 2024 · arXiv:2406.18665',A+'2406.18665']]},
+ {x:1050,y:474,ac:'orange',ic:'evaluation',t:'Evaluation &amp; Observability',
+  desc:'Measuring reliability, cost, and failure modes — agent benchmarks, trace logging, and systematic failure analysis.',
+  items:['reliability metrics','latency / cost','trace logging','benchmark mutation','failure analysis'],
+  refs:[['AgentBench: Evaluating LLMs as Agents','Liu et al. 2023 · arXiv:2308.03688',A+'2308.03688'],
+        ['GAIA: A Benchmark for General AI Assistants','Mialon et al. 2023 · arXiv:2311.12983',A+'2311.12983'],
+        ['τ-bench: Tool-Agent-User Interaction','Yao et al. 2024 · arXiv:2406.12045',A+'2406.12045']]}
+];
+
+const svgIcon=(ic,cls='')=>`<svg ${cls} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${ICON[ic]}</svg>`;
+
+// hub
+const hub=document.getElementById('hub'); hub.style.left=HUB.x+'px'; hub.style.top=HUB.y+'px';
+
+// cards + connectors
+const cardsEl=document.getElementById('cards'), linkg=document.getElementById('linkg');
+DATA.forEach((d,i)=>{
+  const[fg,bg]=TINT[d.ac];
+  const el=document.createElement('div');
+  el.className='box card'; el.style.setProperty('--ac',fg); el.style.setProperty('--bg',bg);
+  el.style.left=d.x+'px'; el.style.top=d.y+'px';
+  const lead=d.refs[0][1].split(' · ')[0];
+  el.innerHTML=`<div class="hd">${svgIcon(d.ic)}<span class="nm">${d.t}</span></div>
+    <div class="items">${d.items.join('  ·  ')}</div>
+    <div class="foot">&#9656; 3 papers <span class="pl">&mdash; ${lead}, +2</span></div>`;
+  el.addEventListener('click',()=>openSheet(i));
+  cardsEl.appendChild(el);
+  const ln=document.createElementNS('http://www.w3.org/2000/svg','line');
+  ln.setAttribute('class','link');
+  ln.setAttribute('x1',HUB.x); ln.setAttribute('y1',HUB.y);
+  ln.setAttribute('x2',d.x);   ln.setAttribute('y2',d.y);
+  linkg.appendChild(ln);
+});
+
+// flow
+const FLOW=[['Task',0],['Harness',1],['LLM / Tools',0],['Actions',0],['Environment / Results',0],['Feedback',0]];
+const flow=document.getElementById('flow');
+FLOW.forEach((p,i)=>{
+  if(i) flow.insertAdjacentHTML('beforeend','<span class="arr">&rsaquo;</span>');
+  flow.insertAdjacentHTML('beforeend',`<span class="pill${p[1]?' key':''}">${p[0]}</span>`);
+});
+
+// expand panel
+const ov=document.getElementById('ov'), sheet=document.getElementById('sheet');
+function openSheet(i){
+  const d=DATA[i], [fg,bg]=TINT[d.ac];
+  sheet.style.setProperty('--ac',fg); sheet.style.setProperty('--bg',bg);
+  sheet.innerHTML=`<button class="x" aria-label="close">&times;</button>
+    <div class="mh">${svgIcon(d.ic)}<span>${d.t}</span></div>
+    <div class="desc">${d.desc}</div>
+    <div class="lbl">In scope</div>
+    <div class="chips">${d.items.map(it=>`<span class="chip">${it}</span>`).join('')}</div>
+    <div class="lbl">Key references</div>
+    <ul class="refs">${d.refs.map(r=>`<li><a href="${r[2]}" target="_blank" rel="noopener">${r[0]}</a><span class="meta">${r[1]}</span></li>`).join('')}</ul>`;
+  sheet.querySelector('.x').addEventListener('click',closeSheet);
+  ov.classList.add('show');
+}
+function closeSheet(){ ov.classList.remove('show'); }
+ov.addEventListener('click',e=>{ if(e.target===ov) closeSheet(); });
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeSheet(); });
+
+// fit to viewport
+function fit(){
+  const s=document.getElementById('scaler');
+  const k=Math.min((window.innerWidth-32)/1280,(window.innerHeight-32)/720,1);
+  document.getElementById('stage').style.transform='scale('+k+')';
+  s.style.width=(1280*k)+'px'; s.style.height=(720*k)+'px';
+}
+window.addEventListener('resize',fit); fit();
+
+// optional deep-link: ?open=N (1-8) opens that direction on load
+const op=new URLSearchParams(location.search).get('open');
+if(op && +op>=1 && +op<=DATA.length) openSheet(+op-1);
+</script>
+</body>
+</html>

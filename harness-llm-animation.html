@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Agent = LLM + Harness — token flow animation</title>
+<style>
+  :root{ --ink:#1e1b2e; --harness:#1d4ed8; --llm:#6d28d9; --tool:#0f766e;
+         --in:#1d4ed8; --out:#7c3aed; --good:#047857; --bad:#b91c1c; --line:#c7c9d6; }
+  *{box-sizing:border-box;}
+  html,body{margin:0;height:100%;background:#f6f5fb;color:var(--ink);
+    font-family:-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;}
+  #wrap{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;}
+  #bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:center;}
+  button{font:inherit;font-weight:700;border:1px solid var(--line);background:#fff;color:var(--ink);
+    border-radius:10px;padding:8px 14px;cursor:pointer;}
+  button.primary{background:linear-gradient(135deg,#7c3aed,#5b21b6);color:#fff;border-color:transparent;}
+  button:disabled{opacity:.4;cursor:default;}
+  button:not(:disabled):hover{filter:brightness(1.04);}
+  #speed{display:flex;gap:6px;align-items:center;color:#6b6880;font-size:14px;}
+  #ind{font-weight:700;color:#6b6880;font-size:14px;min-width:90px;text-align:center;}
+  #cap{font-size:20px;font-weight:600;min-height:28px;color:#3b3552;text-align:center;}
+  #cap b{color:var(--llm);} #cap code{font-family:ui-monospace,Menlo,Consolas,monospace;color:var(--out);}
+  #scaler{display:flex;align-items:center;justify-content:center;}
+  #stage{position:relative;width:1040px;height:600px;background:#fff;border:1px solid #e7e1f6;
+    border-radius:16px;box-shadow:0 10px 40px rgba(76,29,149,.10);overflow:hidden;}
+  .box{position:absolute;border-radius:14px;border:2px solid;display:flex;flex-direction:column;}
+  .box .hd{font-weight:800;letter-spacing:.04em;padding:8px 12px;font-size:18px;}
+  #harness{left:60px;top:120px;width:250px;height:360px;border-color:var(--harness);background:#eef3ff;}
+  #harness .hd{color:var(--harness);}
+  #llm{left:760px;top:120px;width:220px;height:210px;border-color:var(--llm);background:#f3eafe;}
+  #llm .hd{color:var(--llm);}
+  #tool{left:430px;top:490px;width:200px;height:80px;border-color:var(--tool);background:#e9f6f3;}
+  #tool .hd{color:var(--tool);font-size:15px;}
+  #llm.pulse,#tool.flash{animation:flash .5s ease;}
+  @keyframes flash{0%{filter:none}40%{filter:brightness(1.12) drop-shadow(0 0 10px rgba(124,58,237,.5))}100%{filter:none}}
+  #ctx{margin:4px 10px 10px;flex:1;overflow:hidden;}
+  #ctx .lbl{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:#8a82a0;margin-bottom:4px;}
+  .ctxline{font:13px/1.5 ui-monospace,Menlo,Consolas,monospace;background:#fff;border:1px solid #dfe3f3;
+    border-radius:6px;padding:2px 7px;margin:3px 0;color:#2a2f55;opacity:0;transform:translateY(4px);
+    transition:opacity .25s,transform .25s;}
+  .ctxline.show{opacity:1;transform:none;}
+  .ctxline.gen{color:var(--out);border-color:#e3d7fb;background:#faf7ff;}
+  .ctxline.res{color:var(--tool);border-color:#cdeae3;background:#f0fbf8;}
+  svg.lanes{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;}
+  .lane{stroke:var(--line);stroke-width:2;fill:none;}
+  .lanelbl{fill:#9a93ac;font-size:12px;}
+  .tok{position:absolute;font:14px/1 ui-monospace,Menlo,Consolas,monospace;font-weight:700;
+    padding:6px 9px;border-radius:8px;color:#fff;white-space:nowrap;transform:translate(-50%,-50%);
+    box-shadow:0 3px 10px rgba(0,0,0,.12);opacity:1;}
+  .tok.in{background:var(--in);} .tok.out{background:var(--out);}
+  .tok.tool{background:var(--tool);} .tok.good{background:var(--good);}
+  .tok.ghost{background:#aeb4c6;font-style:italic;box-shadow:none;opacity:.85;}
+  .tok.fb{background:#8b93b3;font-size:12px;padding:4px 8px;}
+  .phase{position:absolute;left:50%;top:14px;transform:translateX(-50%);font-weight:800;
+    font-size:14px;letter-spacing:.03em;color:#8a82a0;}
+  .hint{position:absolute;right:14px;bottom:12px;font-size:12px;color:#b4adc6;}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="cap"></div>
+  <div id="scaler"><div id="stage">
+    <svg class="lanes" viewBox="0 0 1040 600" preserveAspectRatio="none">
+      <defs><marker id="ah" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto">
+        <path d="M0,0 L7,3 L0,6 Z" fill="#c7c9d6"/></marker></defs>
+      <path class="lane" marker-end="url(#ah)" d="M310,200 L756,200"/>
+      <text class="lanelbl" x="455" y="190">prompt / context  →</text>
+      <path class="lane" marker-end="url(#ah)" d="M760,300 L314,300"/>
+      <text class="lanelbl" x="455" y="322">←  generated tokens (one at a time)</text>
+      <path class="lane" marker-end="url(#ah)" d="M250,470 L470,496"/>
+      <path class="lane" marker-end="url(#ah)" d="M470,548 L250,480"/>
+    </svg>
+    <div class="phase" id="phase"></div>
+    <div class="box" id="harness"><div class="hd">HARNESS</div>
+      <div id="ctx"><div class="lbl">context (the running transcript)</div></div></div>
+    <div class="box" id="llm"><div class="hd">LLM</div>
+      <div style="padding:0 12px;color:#7a708f;font-size:13px;">text in → next token out<br><span style="font-size:12px;color:#a99fc0;">stateless · probabilistic</span></div></div>
+    <div class="box" id="tool"><div class="hd">Tool: get_logs()</div>
+      <div style="padding:0 12px;color:#5a8f86;font-size:12px;">deterministic</div></div>
+    <div class="hint">← / → to step</div>
+  </div></div>
+  <div id="bar">
+    <button id="prev">◂ Prev</button>
+    <button class="primary" id="next">Next ▸</button>
+    <button id="play">▶ Play</button>
+    <button id="restart">↻ Restart</button>
+    <span id="ind">start</span>
+    <span id="speed">speed
+      <input type="range" id="spd" min="0.5" max="2" step="0.25" value="1"><span id="spdv">1.0×</span></span>
+  </div>
+</div>
+
+<script>
+const stage=document.getElementById('stage'), ctx=document.getElementById('ctx'),
+      cap=document.getElementById('cap'), phaseEl=document.getElementById('phase'),
+      llm=document.getElementById('llm'), tool=document.getElementById('tool'),
+      ind=document.getElementById('ind');
+
+const HX=310, LX=756, TOPY=200, BOTY=300, TOOLX=540, TOOLY=510, HBOT=470;
+let SPEED=1, INSTANT=false, busy=false, cur=-1;
+const dur = ms => INSTANT?0:ms/SPEED;
+const sleep = ms => new Promise(r=>setTimeout(r, dur(ms)));
+
+function fit(){ const s=document.getElementById('scaler');
+  const k=Math.min((window.innerWidth-40)/1040,(window.innerHeight-180)/600,1.2);
+  stage.style.transform='scale('+k+')'; s.style.height=(600*k)+'px'; s.style.width=(1040*k)+'px'; }
+window.addEventListener('resize', fit); fit();
+
+const setCap=h=>cap.innerHTML=h, setPhase=t=>phaseEl.textContent=t;
+function clearTokens(){ stage.querySelectorAll('.tok,.badge').forEach(e=>e.remove()); }
+function resetCtx(){ ctx.innerHTML='<div class="lbl">context (the running transcript)</div>'; }
+function tok(text,x,y,kind){ const t=document.createElement('div'); t.className='tok '+kind;
+  t.textContent=text; t.style.left=x+'px'; t.style.top=y+'px'; stage.appendChild(t); return t; }
+function moveTo(el,x,y,ms){ el.style.transition=`left ${dur(ms)}ms cubic-bezier(.4,0,.2,1), top ${dur(ms)}ms cubic-bezier(.4,0,.2,1)`;
+  void el.offsetWidth; el.style.left=x+'px'; el.style.top=y+'px'; return sleep(ms); }
+async function fadeRemove(el,ms=250){ if(!el)return; el.style.transition=`opacity ${dur(ms)}ms`;
+  void el.offsetWidth; el.style.opacity=0; await sleep(ms); el.remove(); }
+function pulse(el,cls){ el.classList.add(cls); setTimeout(()=>el.classList.remove(cls), dur(500)); }
+function ctxAdd(text,kind=''){ const d=document.createElement('div'); d.className='ctxline '+kind; d.textContent=text;
+  ctx.appendChild(d); void d.offsetWidth; d.classList.add('show'); }
+
+// --- mechanics -----------------------------------------------------------
+async function sendIn(text){                         // one prompt token harness -> LLM
+  const t=tok(text,HX,TOPY,'in'); await moveTo(t,LX,TOPY,750); await fadeRemove(t,160);
+  ctxAdd(text); pulse(llm,'pulse'); }
+async function ghost(text){                           // a discarded mid-prompt next-token prediction
+  const g=tok(text,LX,BOTY,'ghost'); await moveTo(g,LX-170,BOTY,600); await fadeRemove(g,350); }
+async function emit(text,kind='gen'){                 // LLM generates a token -> harness, appended
+  const t=tok(text,LX,BOTY,kind==='gen'?'out':kind); await moveTo(t,HX+60,BOTY,750); await fadeRemove(t,160);
+  ctxAdd(text, kind); }
+async function feedback(){                             // append + re-send whole context to the LLM
+  const d=tok('↺ context',HX,TOPY,'fb'); await moveTo(d,LX,TOPY,500); await fadeRemove(d,140); pulse(llm,'pulse'); }
+async function invokeTool(){                           // harness runs the tool, result -> context
+  const a=tok('get_logs()',HX+60,HBOT,'out'); await moveTo(a,TOOLX,TOOLY,650); pulse(tool,'flash'); await fadeRemove(a,140);
+  const r=tok('logs: timeout',TOOLX,TOOLY,'tool'); await moveTo(r,HX+60,HBOT,650); await fadeRemove(r,140);
+  ctxAdd('→ logs: timeout','res'); }
+
+const S={};
+const STEPS=[
+ {run:async()=>{ resetCtx(); setPhase('prompt ingestion — token by token');
+   setCap('Feed the prompt <b>one token at a time</b>.');
+   await sendIn('Diagnose');
+   setCap('After each token the model predicts a next one — here a <b>guess we discard</b>.');
+   await ghost('the'); }},
+ {run:async()=>{ await sendIn('ticket');
+   setCap('Mid-prompt predictions are <b>discarded</b> — only the prediction after the <b>last</b> token is used.');
+   await ghost('error'); }},
+ {run:async()=>{ await sendIn('#4521');
+   setCap('Now the next prediction is the <b>real start of the answer</b>.'); }},
+ {run:async()=>{ setPhase('generation — autoregressive');
+   setCap('It generates <code>&lt;tool&gt;</code> — the model is asking to call a tool.');
+   await emit('<tool>'); await feedback(); }},
+ {run:async()=>{ setCap('Every generated token is <b>fed back</b> to produce the next (autoregression).');
+   await emit('call_get_logs()'); await feedback(); }},
+ {run:async()=>{ setCap('It closes the tag: <code>&lt;/tool&gt;</code> — the tool call is now <b>complete</b>.');
+   await emit('</tool>'); }},
+ {run:async()=>{ setCap('The <b>harness</b> sees the closed tag and <b>invokes the tool</b>.');
+   await invokeTool(); }},
+ {run:async()=>{ setCap('The result is appended and <b>fed back</b> — generation continues.');
+   await feedback(); await emit('restart(svc)'); await feedback(); }},
+ {run:async()=>{ setCap('…until the task is <b>done</b>. ✓');
+   S.d=tok('Fixed ✓',LX,BOTY,'good'); await moveTo(S.d,HX-110,BOTY,800); ctxAdd('Fixed ✓','res'); }},
+];
+const N=STEPS.length;
+
+function updateUI(){ ind.textContent = cur<0?'start':('step '+(cur+1)+' / '+N);
+  document.getElementById('prev').disabled=busy||cur<0;
+  document.getElementById('next').disabled=busy||cur>=N-1; }
+function resetScene(){ clearTokens(); resetCtx(); setPhase(''); cur=-1;
+  setCap('Agent&nbsp;=&nbsp;LLM&nbsp;+&nbsp;Harness — step with the <b>arrow keys</b>.'); }
+
+async function goto(t){ t=Math.max(-1,Math.min(N-1,t));
+  if(busy||t===cur) return; busy=true; updateUI();
+  try{ if(t<cur){ resetScene(); INSTANT=true; for(let k=0;k<=t;k++){ await STEPS[k].run(); cur=k; } INSTANT=false; }
+       else { for(let k=cur+1;k<=t;k++){ await STEPS[k].run(); cur=k; } } }
+  finally{ busy=false; updateUI(); } }
+async function playAll(){ if(busy)return; if(cur>=N-1) await goto(-1);
+  while(cur<N-1){ await goto(cur+1); if(cur<N-1) await sleep(450); } }
+
+document.getElementById('next').onclick   =()=>goto(cur+1);
+document.getElementById('prev').onclick   =()=>goto(cur-1);
+document.getElementById('play').onclick   =()=>playAll();
+document.getElementById('restart').onclick=()=>{ resetScene(); updateUI(); };
+document.getElementById('spd').oninput =e=>{ SPEED=+e.target.value; document.getElementById('spdv').textContent=SPEED.toFixed(1)+'×'; };
+document.addEventListener('keydown',e=>{
+  if(['ArrowRight','ArrowDown','PageDown',' '].includes(e.key)){ e.preventDefault(); goto(cur+1); }
+  else if(['ArrowLeft','ArrowUp','PageUp'].includes(e.key)){ e.preventDefault(); goto(cur-1); }
+  else if(e.key==='Home'){ e.preventDefault(); resetScene(); updateUI(); }
+  else if(e.key==='End'){ e.preventDefault(); goto(N-1); }
+});
+resetScene(); updateUI();
+</script>
+</body>
+</html>
