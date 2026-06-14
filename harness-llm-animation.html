@@ -55,9 +55,26 @@
   .phase{position:absolute;left:50%;top:14px;transform:translateX(-50%);font-weight:800;
     font-size:14px;letter-spacing:.03em;color:#8a82a0;}
   .hint{position:absolute;right:14px;bottom:12px;font-size:12px;color:#b4adc6;}
+  #stage{touch-action:manipulation;}
+  #rotate{position:fixed;inset:0;display:none;z-index:50;background:#f6f5fb;
+    flex-direction:column;align-items:center;justify-content:center;gap:14px;
+    color:#6b6880;font-weight:700;text-align:center;padding:24px;}
+  #rotate .ico{font-size:48px;}
+  /* phones / narrow viewports */
+  @media (max-width:760px){
+    #wrap{gap:8px;padding:6px;}
+    #cap{font-size:15px;line-height:1.3;min-height:0;padding:0 6px;}
+    #bar{gap:6px;}
+    button{padding:10px 12px;border-radius:12px;min-height:44px;}
+    #ind{min-width:64px;font-size:13px;}
+    #speed{display:none;}            /* free up the control bar on small screens */
+    .hint{display:none;}
+  }
 </style>
 </head>
 <body>
+<div id="rotate"><div class="ico">📱↻</div><div>Rotate your phone sideways<br>for a bigger view</div>
+  <button id="rotate-ok" style="margin-top:6px;">Got it — show anyway</button></div>
 <div id="wrap">
   <div id="cap"></div>
   <div id="scaler"><div id="stage">
@@ -78,7 +95,7 @@
       <div style="padding:0 12px;color:#7a708f;font-size:13px;">text in → next token out<br><span style="font-size:12px;color:#a99fc0;">stateless · probabilistic</span></div></div>
     <div class="box" id="tool"><div class="hd">Tool: get_logs()</div>
       <div style="padding:0 12px;color:#5a8f86;font-size:12px;">deterministic</div></div>
-    <div class="hint">← / → to step</div>
+    <div class="hint" id="hint">← / → to step</div>
   </div></div>
   <div id="bar">
     <button id="prev">◂ Prev</button>
@@ -103,9 +120,16 @@ const dur = ms => INSTANT?0:ms/SPEED;
 const sleep = ms => new Promise(r=>setTimeout(r, dur(ms)));
 
 function fit(){ const s=document.getElementById('scaler');
-  const k=Math.min((window.innerWidth-40)/1040,(window.innerHeight-180)/600,1.2);
+  const small=window.innerWidth<=760;
+  const padW=small?12:40;                                  // hug the edges on phones
+  const bar=document.getElementById('bar').offsetHeight||56;
+  const capReserve=small?56:48;                            // room for a wrapped caption
+  const availW=window.innerWidth-padW;
+  const availH=window.innerHeight-bar-capReserve-24;
+  const k=Math.min(availW/1040, availH/600, 1.3);
   stage.style.transform='scale('+k+')'; s.style.height=(600*k)+'px'; s.style.width=(1040*k)+'px'; }
-window.addEventListener('resize', fit); fit();
+window.addEventListener('resize', fit);
+window.addEventListener('orientationchange', ()=>setTimeout(fit,200));
 
 const setCap=h=>cap.innerHTML=h, setPhase=t=>phaseEl.textContent=t;
 function clearTokens(){ stage.querySelectorAll('.tok,.badge').forEach(e=>e.remove()); }
@@ -189,7 +213,28 @@ document.addEventListener('keydown',e=>{
   else if(e.key==='Home'){ e.preventDefault(); resetScene(); updateUI(); }
   else if(e.key==='End'){ e.preventDefault(); goto(N-1); }
 });
-resetScene(); updateUI();
+// --- touch: tap to advance, horizontal swipe to step ----------------------
+const isTouch = window.matchMedia('(hover:none)').matches || 'ontouchstart' in window;
+if(isTouch){
+  document.getElementById('hint').textContent='tap / swipe to step';
+  let sx=0, sy=0;
+  stage.addEventListener('touchstart',e=>{ const t=e.changedTouches[0]; sx=t.clientX; sy=t.clientY; },{passive:true});
+  stage.addEventListener('touchend',e=>{ const t=e.changedTouches[0];
+    const dx=t.clientX-sx, dy=t.clientY-sy;
+    if(Math.abs(dx)>40 && Math.abs(dx)>Math.abs(dy)) goto(dx>0?cur-1:cur+1);   // swipe
+    else goto(cur+1);                                                          // tap
+  },{passive:true});
+}
+
+// --- portrait hint on small phones ---------------------------------------
+function checkRotate(){ const r=document.getElementById('rotate');
+  const portrait = window.innerHeight > window.innerWidth;
+  r.style.display = (isTouch && portrait && window.innerWidth<=480) ? 'flex' : 'none'; }
+document.getElementById('rotate-ok').onclick=()=>{ document.getElementById('rotate').style.display='none'; };
+window.addEventListener('resize', checkRotate);
+window.addEventListener('orientationchange', ()=>setTimeout(checkRotate,200));
+
+resetScene(); updateUI(); fit(); checkRotate();
 </script>
 </body>
 </html>
